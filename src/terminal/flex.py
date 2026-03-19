@@ -1,5 +1,7 @@
 """Flex layout primitives for terminal UI."""
 
+from terminal.measure import display_width
+
 
 class Flex:
     """Flex layout utilities — arrange content like CSS flexbox."""
@@ -10,12 +12,12 @@ class Flex:
 
         Chunks can be str or Text (anything with len() and str()).
         """
-        sep_w = len(sep)
+        sep_w = display_width(sep)
         lines: list[str] = []
         cur_parts: list[str] = []
         cur_w = 0
         for chunk in chunks:
-            chunk_w = len(chunk)
+            chunk_w = display_width(str(chunk))
             new_w = chunk_w if not cur_parts else cur_w + sep_w + chunk_w
             if new_w <= width:
                 cur_parts.append(str(chunk))

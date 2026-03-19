@@ -1,9 +1,6 @@
 """ANSI-aware text — a string that knows its visible width."""
 
-import re
-from wcwidth import wcswidth
-
-_ANSI_RE = re.compile(r"\033\[[^m]*m")
+from terminal.measure import display_width, strip_ansi
 
 
 class Text:
@@ -13,9 +10,7 @@ class Text:
 
     def __init__(self, value=""):
         self._raw = str(value)
-        stripped = _ANSI_RE.sub("", self._raw)
-        w = wcswidth(stripped)
-        self._visible = w if w >= 0 else len(stripped)
+        self._visible = display_width(self._raw)
 
     def __len__(self):
         return self._visible
@@ -40,7 +35,7 @@ class Text:
     def truncate(self, max_len: int = 30) -> "Text":
         if self._visible <= max_len:
             return self
-        raw = _ANSI_RE.sub("", self._raw)
+        raw = strip_ansi(self._raw)
         return Text(raw[:max_len - 1] + "…")
 
     def pad(self, width: int, align: str = "left") -> "Text":
