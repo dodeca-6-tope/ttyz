@@ -5,6 +5,7 @@ import codecs
 import os
 from dataclasses import dataclass
 import select
+import signal
 import sys
 import termios
 import tty
@@ -28,6 +29,11 @@ class Terminal:
         self._active = False
         self._atexit = False
         self._utf8 = codecs.getincrementaldecoder("utf-8")("ignore")
+        self._resized = False
+        self._prev_sigwinch = None
+        self._screen: list[str] = []  # what's currently on the terminal
+        self._screen_rows = 0
+        self._screen_cols = 0
 
     @property
     def active(self) -> bool:
@@ -41,6 +47,8 @@ class Terminal:
         # Alt screen, hide cursor, bracketed paste, focus events
         sys.stdout.write("\033[?1049h\033[?25l\033[?2004h\033[?1004h")
         sys.stdout.flush()
+        self._prev_sigwinch = signal.getsignal(signal.SIGWINCH)
+        signal.signal(signal.SIGWINCH, self._on_sigwinch)
         if not self._atexit:
             atexit.register(self.cleanup)
             self._atexit = True
@@ -54,9 +62,17 @@ class Terminal:
         if not self._active:
             return
         self._active = False
+        self._screen = []
         sys.stdout.write("\033[?1004l\033[?2004l\033[?25h\033[?1049l")
         sys.stdout.flush()
         self._restore()
+        if self._prev_sigwinch is not None:
+            signal.signal(signal.SIGWINCH, self._prev_sigwinch)
+            self._prev_sigwinch = None
+
+    def _on_sigwinch(self, signum, frame):
+        self._resized = True
+        self._screen = []  # invalidate — terminal reflowed content
 
     def suspend(self):
         """Leave alt screen and restore terminal for a child process."""
@@ -69,10 +85,22 @@ class Terminal:
         self._enter_raw()
         sys.stdout.write("\033[?1049h\033[?25l")
         sys.stdout.flush()
+        self._screen = []  # force full redraw on next render
 
     def readkey(self) -> str | Paste | None:
-        """Read a single keypress. Returns None on timeout (1/60s)."""
-        if not select.select([self._fd], [], [], 1 / 60)[0]:
+        """Read a single keypress. Returns None on timeout (1/60s) or resize."""
+        if self._resized:
+            self._resized = False
+            return "resize"
+        try:
+            ready = select.select([self._fd], [], [], 1 / 60)[0]
+        except InterruptedError:
+            # SIGWINCH interrupts select
+            if self._resized:
+                self._resized = False
+                return "resize"
+            return None
+        if not ready:
             return None
         ch = os.read(self._fd, 1)
         if ch == b"\x1b":
@@ -161,14 +189,41 @@ class Terminal:
                 return Paste(buf.decode("utf-8", errors="replace").replace("\r", "\n"))
 
     def render(self, lines: list[str]):
-        """Write full screen with synchronized update to avoid flicker."""
-        parts = ["\033[?2026h\033[H"]
-        for line in lines:
-            parts.append(line)
-            parts.append("\033[K\n")
-        parts.append("\033[J\033[?2026l")
+        """Write full screen with diff-based update to minimize flicker."""
+        size = os.get_terminal_size()
+        rows, cols = size.lines, size.columns
+        resized = rows != self._screen_rows or cols != self._screen_cols
+
+        # Pad new frame to fill screen
+        frame = list(lines[:rows])
+        while len(frame) < rows:
+            frame.append("")
+
+        parts = ["\033[?2026h"]
+        if resized or not self._screen:
+            # Full redraw — size changed or first render
+            parts.append("\033[H")
+            for i in range(rows):
+                parts.append(frame[i])
+                parts.append("\033[K")
+                if i < rows - 1:
+                    parts.append("\n")
+        else:
+            # Diff — only update changed lines
+            for i in range(rows):
+                old = self._screen[i] if i < len(self._screen) else ""
+                if frame[i] != old:
+                    parts.append(f"\033[{i + 1};1H")  # move to row i+1, col 1
+                    parts.append(frame[i])
+                    parts.append("\033[K")
+        parts.append("\033[?2026l")
+
         sys.stdout.buffer.write("".join(parts).encode())
         sys.stdout.buffer.flush()
+
+        self._screen = frame
+        self._screen_rows = rows
+        self._screen_cols = cols
 
     def _enter_raw(self):
         """Switch to raw mode, re-enable output processing for \\n → \\r\\n."""
