@@ -25,6 +25,68 @@ class Paste:
         return self.text
 
 
+# Single-byte → key name
+_BYTE_KEYS: dict[bytes, str] = {
+    b"\t": "tab",
+    b"\r": "enter",
+    b"\n": "enter",
+    b"\x01": "ctrl-a",
+    b"\x02": "ctrl-b",
+    b"\x04": "ctrl-d",
+    b"\x05": "ctrl-e",
+    b"\x06": "ctrl-f",
+    b"\x07": "ctrl-g",
+    b"\x0b": "ctrl-k",
+    b"\x0c": "ctrl-l",
+    b"\x0e": "ctrl-n",
+    b"\x0f": "ctrl-o",
+    b"\x10": "ctrl-p",
+    b"\x11": "ctrl-q",
+    b"\x12": "ctrl-r",
+    b"\x14": "ctrl-t",
+    b"\x15": "clear-line",
+    b"\x16": "ctrl-v",
+    b"\x17": "delete-word",
+    b"\x18": "ctrl-x",
+    b"\x19": "ctrl-y",
+    b"\x1a": "ctrl-z",
+    b" ": "space",
+    b"\x7f": "backspace",
+    b"\x08": "backspace",
+}
+
+# \x1b[ + 1-2 bytes → key name  (CSI sequences)
+_CSI_KEYS: dict[bytes, str] = {
+    b"A": "up",
+    b"B": "down",
+    b"C": "right",
+    b"D": "left",
+    b"H": "home",
+    b"F": "end",
+    b"Z": "shift-tab",
+    b"I": "focus",
+    b"3~": "delete",
+}
+
+# \x1b + single byte → key name  (Alt / Option sequences)
+_ESC_KEYS: dict[bytes, str] = {
+    b"\x7f": "delete-word",
+    b"b": "word-left",
+    b"f": "word-right",
+    b"d": "delete-word",
+}
+
+# \x1b[1;{mod}{dir} → key name  (modifier arrow sequences)
+_MOD_KEYS: dict[tuple[bytes, bytes], str] = {
+    (b"3", b"C"): "word-right",   # Option
+    (b"3", b"D"): "word-left",
+    (b"9", b"C"): "word-right",   # Cmd (iTerm2)
+    (b"9", b"D"): "word-left",
+    (b"2", b"C"): "end",          # Shift
+    (b"2", b"D"): "home",
+}
+
+
 class Terminal:
     """Context manager for full-screen terminal UI sessions."""
 
@@ -112,69 +174,11 @@ class Terminal:
             return None
         ch = os.read(fd, 1)
         if ch == b"\x1b":
-            if select.select([fd], [], [], 0.02)[0]:
-                seq = os.read(fd, 16)
-                # Bracketed paste: \x1b[200~ ... \x1b[201~
-                if seq.startswith(b"[200~"):
-                    return self._read_paste(seq[5:])
-                if seq[:2] == b"[A": return "up"
-                if seq[:2] == b"[B": return "down"
-                if seq[:2] == b"[C": return "right"
-                if seq[:2] == b"[D": return "left"
-                if seq[:2] == b"[H": return "home"
-                if seq[:2] == b"[F": return "end"
-                if seq[:2] == b"[Z": return "shift-tab"
-                if seq[:2] == b"[I": return "focus"
-                if seq[:2] == b"[O": return None  # focus lost
-                if seq == b"[3~": return "delete"
-                if seq[:1] == b"[" and len(seq) >= 5 and seq[1:2] == b"1":
-                    mod, d = seq[3:4], seq[4:5]
-                    # mod 3 = Option, mod 9 = Cmd (iTerm2)
-                    if mod in (b"3", b"9"):
-                        if d == b"C": return "word-right"
-                        if d == b"D": return "word-left"
-                    if mod == b"2":  # Shift
-                        if d == b"C": return "end"
-                        if d == b"D": return "home"
-                # Double escape: \x1b\x1b[X — Option+arrow on some terminals
-                if seq[:1] == b"\x1b" and len(seq) >= 3:
-                    if seq[1:3] == b"[C": return "word-right"
-                    if seq[1:3] == b"[D": return "word-left"
-                    if seq[1:3] == b"[A": return "up"
-                    if seq[1:3] == b"[B": return "down"
-                if seq[:1] == b"[":
-                    return None  # ignore unknown CSI sequences
-                if seq[:1] == b"\x7f": return "delete-word"
-                if seq[:1] == b"b": return "word-left"
-                if seq[:1] == b"f": return "word-right"
-                if seq[:1] == b"d": return "delete-word"
-                return None  # ignore unknown escape sequences
-            return "esc"
-        if ch == b"\t": return "tab"
-        if ch in (b"\r", b"\n"): return "enter"
-        if ch == b"\x01": return "ctrl-a"
-        if ch == b"\x02": return "ctrl-b"
+            return self._read_escape(fd)
         if ch == b"\x03": raise KeyboardInterrupt
-        if ch == b"\x04": return "ctrl-d"
-        if ch == b"\x05": return "ctrl-e"
-        if ch == b"\x06": return "ctrl-f"
-        if ch == b"\x07": return "ctrl-g"
-        if ch == b"\x0b": return "ctrl-k"
-        if ch == b"\x0c": return "ctrl-l"
-        if ch == b"\x0e": return "ctrl-n"
-        if ch == b"\x0f": return "ctrl-o"
-        if ch == b"\x10": return "ctrl-p"
-        if ch == b"\x11": return "ctrl-q"
-        if ch == b"\x12": return "ctrl-r"
-        if ch == b"\x14": return "ctrl-t"
-        if ch == b"\x15": return "clear-line"
-        if ch == b"\x16": return "ctrl-v"
-        if ch == b"\x17": return "delete-word"
-        if ch == b"\x18": return "ctrl-x"
-        if ch == b"\x19": return "ctrl-y"
-        if ch == b"\x1a": return "ctrl-z"
-        if ch == b" ": return "space"
-        if ch in (b"\x7f", b"\x08"): return "backspace"
+        hit = _BYTE_KEYS.get(ch)
+        if hit:
+            return hit
         result = self._utf8.decode(ch)
         while not result:
             if not select.select([fd], [], [], 0.01)[0]:
@@ -182,6 +186,36 @@ class Terminal:
                 return None
             result = self._utf8.decode(os.read(fd, 1))
         return result
+
+    def _read_escape(self, fd: int) -> str | Paste | None:
+        """Parse an escape sequence into a key name."""
+        if not select.select([fd], [], [], 0.02)[0]:
+            return "esc"
+        seq = os.read(fd, 16)
+        # Bracketed paste
+        if seq.startswith(b"[200~"):
+            return self._read_paste(seq[5:])
+        # CSI sequence: \x1b[...
+        if seq[:1] == b"[":
+            return self._parse_csi(seq[1:])
+        # Double escape: \x1b\x1b[X — Option+arrow on some terminals
+        if seq[:1] == b"\x1b" and len(seq) >= 3:
+            return _CSI_KEYS.get(seq[2:3])
+        # Alt/Option + key
+        return _ESC_KEYS.get(seq[:1])
+
+    @staticmethod
+    def _parse_csi(csi: bytes) -> str | None:
+        """Parse a CSI (Control Sequence Introducer) payload."""
+        if csi[:1] == b"O":
+            return None  # focus lost
+        hit = _CSI_KEYS.get(csi) or _CSI_KEYS.get(csi[:2])
+        if hit:
+            return hit
+        # Modifier: 1;{mod}{dir}
+        if len(csi) >= 4 and csi[:1] == b"1":
+            return _MOD_KEYS.get((csi[2:3], csi[3:4]))
+        return None
 
     def _read_paste(self, initial: bytes) -> Paste:
         """Read bracketed paste content until \\x1b[201~."""
