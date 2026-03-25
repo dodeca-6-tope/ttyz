@@ -99,10 +99,10 @@ class TextInput:
 
     # ── Navigation ───────────────────────────────────────────────────
 
-    def _paste_strictly_inside(self, pos: int) -> tuple[int, int] | None:
-        """Return paste range if pos is strictly inside it (not at boundaries)."""
+    def _find_paste(self, pos: int, *, include_end: bool = False) -> tuple[int, int] | None:
+        """Return paste range containing pos. With include_end, also matches pos == end."""
         for s, e in self.pastes:
-            if s < pos < e:
+            if s < pos < e or (include_end and s < pos == e):
                 return (s, e)
         return None
 
@@ -110,38 +110,33 @@ class TextInput:
         if self.cursor == 0:
             return
         new = self.cursor - 1
-        paste = self._paste_strictly_inside(new)
+        paste = self._find_paste(new)
         self.cursor = paste[0] if paste else new
 
     def _move_right(self) -> None:
         if self.cursor >= len(self.value):
             return
         new = self.cursor + 1
-        paste = self._paste_strictly_inside(new)
+        paste = self._find_paste(new)
         self.cursor = paste[1] if paste else new
 
     def _word_left(self) -> None:
         """Move cursor to start of current/previous word. Pastes are atomic."""
         if self.cursor == 0:
             return
-        paste = self._paste_containing(self.cursor)
-        if not paste:
-            for s, e in self.pastes:
-                if e == self.cursor:
-                    paste = (s, e)
-                    break
+        paste = self._find_paste(self.cursor, include_end=True)
         if paste:
             self.cursor = paste[0]
             return
         self.cursor -= 1
         while self.cursor > 0 and self.value[self.cursor] == " ":
-            p = self._paste_strictly_inside(self.cursor)
+            p = self._find_paste(self.cursor)
             if p:
                 self.cursor = p[0]
                 return
             self.cursor -= 1
         while self.cursor > 0 and self.value[self.cursor - 1] != " ":
-            p = self._paste_strictly_inside(self.cursor - 1)
+            p = self._find_paste(self.cursor - 1)
             if p:
                 self.cursor = p[0]
                 return
@@ -151,7 +146,7 @@ class TextInput:
         """Move cursor to start of next word. Pastes are atomic."""
         if self.cursor >= len(self.value):
             return
-        paste = self._paste_containing(self.cursor)
+        paste = self._find_paste(self.cursor, include_end=True)
         if not paste:
             for s, e in self.pastes:
                 if s == self.cursor:
@@ -188,7 +183,7 @@ class TextInput:
         if self.cursor == 0:
             return
         # If cursor is inside or at the end of a paste, delete the whole paste
-        paste = self._paste_containing(self.cursor)
+        paste = self._find_paste(self.cursor, include_end=True)
         if paste:
             start, end = paste
             self.pastes.remove(paste)
@@ -210,7 +205,7 @@ class TextInput:
     def _delete_word(self) -> None:
         if self.cursor == 0:
             return
-        paste = self._paste_containing(self.cursor)
+        paste = self._find_paste(self.cursor, include_end=True)
         if paste:
             self._backspace()
             return
@@ -230,13 +225,6 @@ class TextInput:
         self.pastes = [(s, e) for s, e in self.pastes if e > s]
 
     # ── Paste range helpers ──────────────────────────────────────────
-
-    def _paste_containing(self, pos: int) -> tuple[int, int] | None:
-        """Return paste range if pos is inside or at the end of it."""
-        for p in self.pastes:
-            if p[0] < pos <= p[1]:
-                return p
-        return None
 
     def _shift_pastes(self, after: int, delta: int) -> None:
         """Shift paste ranges. Splits any range that contains the insertion point."""
