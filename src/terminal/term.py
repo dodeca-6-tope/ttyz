@@ -241,21 +241,12 @@ class Terminal:
 
         parts = ["\033[?2026h"]
         if resized or not self._screen:
-            # Full redraw — size changed or first render
-            parts.append("\033[H")
-            for i in range(rows):
-                parts.append(frame[i])
-                parts.append("\033[K")
-                if i < rows - 1:
-                    parts.append("\n")
+            parts.append("\033[H" + "\033[K\n".join(frame) + "\033[K")
         else:
-            # Diff — only update changed lines
             for i in range(rows):
                 old = self._screen[i] if i < len(self._screen) else ""
                 if frame[i] != old:
-                    parts.append(f"\033[{i + 1};1H")  # move to row i+1, col 1
-                    parts.append(frame[i])
-                    parts.append("\033[K")
+                    parts.append(f"\033[{i + 1};1H{frame[i]}\033[K")
         parts.append("\033[?2026l")
 
         sys.stdout.buffer.write("".join(parts).encode())
