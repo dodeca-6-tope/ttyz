@@ -165,7 +165,6 @@ class Terminal:
         try:
             ready = select.select([fd], [], [], 1 / 60)[0]
         except InterruptedError:
-            # SIGWINCH interrupts select
             if self._resized:
                 self._resized = False
                 return "resize"
@@ -238,10 +237,7 @@ class Terminal:
         rows, cols = size.lines, size.columns
         resized = rows != self._screen_rows or cols != self._screen_cols
 
-        # Pad new frame to fill screen
-        frame = list(lines[:rows])
-        while len(frame) < rows:
-            frame.append("")
+        frame = list(lines[:rows]) + [""] * max(0, rows - len(lines))
 
         parts = ["\033[?2026h"]
         if resized or not self._screen:
