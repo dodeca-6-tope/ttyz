@@ -75,23 +75,20 @@ class Picker:
             return self.choices[self._filtered[self.cursor][0]]["value"]
         return None
 
+    _EVENTS: dict[str, str] = {"esc": "cancel", "ctrl-r": "confirm", "enter": "select"}
+
     def handle_key(self, key: str) -> str | None:
         """Process a key. Returns event name or None.
 
         Events: "select" (enter), "cancel" (esc), "confirm" (ctrl+r).
         """
-        if key == "esc":
-            return "cancel"
-        if key == "ctrl-r":
-            return "confirm"
-        if key == "enter":
-            return "select"
-
+        event = self._EVENTS.get(key)
+        if event:
+            return event
         if key == "up":
             if self.cursor > 0:
                 self.cursor -= 1
-                if self.cursor < self.scroll:
-                    self.scroll = self.cursor
+                self.scroll = min(self.scroll, self.cursor)
         elif key == "down":
             if self.cursor < len(self._filtered) - 1:
                 self.cursor += 1
@@ -108,7 +105,6 @@ class Picker:
         elif self._qi.handle_key(key) and self._qi.value != self._prev_query:
             self._prev_query = self._qi.value
             self._filter()
-
         return None
 
     def view(self) -> View:
