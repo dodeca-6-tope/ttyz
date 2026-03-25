@@ -66,30 +66,29 @@ class TextInput:
 
     # ── Mutations ────────────────────────────────────────────────────
 
+    _KEY_ACTIONS: dict[str, str] = {
+        "left": "_move_left",
+        "right": "_move_right",
+        "word-left": "_word_left",
+        "word-right": "_word_right",
+        "backspace": "_backspace",
+        "clear-line": "_clear_line",
+        "delete-word": "_delete_word",
+    }
+
     def handle_key(self, key: str | Paste) -> bool:
         """Process a key or paste event. Returns True if handled, False otherwise."""
         if isinstance(key, Paste):
-            text = key.text
-            self._paste(text)
+            self._paste(key.text)
             return True
-        if key == "left":
-            self._move_left()
-        elif key == "right":
-            self._move_right()
-        elif key == "home":
+        action = self._KEY_ACTIONS.get(key)
+        if action:
+            getattr(self, action)()
+            return True
+        if key == "home":
             self.cursor = 0
         elif key == "end":
             self.cursor = len(self.value)
-        elif key == "word-left":
-            self._word_left()
-        elif key == "word-right":
-            self._word_right()
-        elif key == "backspace":
-            self._backspace()
-        elif key == "clear-line":
-            self._clear_line()
-        elif key == "delete-word":
-            self._delete_word()
         elif key == "space":
             self._insert(" ")
         elif len(key) == 1 and key.isprintable():
@@ -100,22 +99,10 @@ class TextInput:
 
     # ── Navigation ───────────────────────────────────────────────────
 
-    def _paste_at(self, pos: int) -> tuple[int, int] | None:
+    def _paste_strictly_inside(self, pos: int) -> tuple[int, int] | None:
         """Return paste range if pos is strictly inside it (not at boundaries)."""
         for s, e in self.pastes:
             if s < pos < e:
-                return (s, e)
-        return None
-
-    def _paste_starting_at(self, pos: int) -> tuple[int, int] | None:
-        for s, e in self.pastes:
-            if s == pos:
-                return (s, e)
-        return None
-
-    def _paste_ending_at(self, pos: int) -> tuple[int, int] | None:
-        for s, e in self.pastes:
-            if e == pos:
                 return (s, e)
         return None
 
@@ -123,43 +110,38 @@ class TextInput:
         if self.cursor == 0:
             return
         new = self.cursor - 1
-        paste = self._paste_at(new)
-        if paste:
-            self.cursor = paste[0]
-        else:
-            self.cursor = new
+        paste = self._paste_strictly_inside(new)
+        self.cursor = paste[0] if paste else new
 
     def _move_right(self) -> None:
         if self.cursor >= len(self.value):
             return
         new = self.cursor + 1
-        paste = self._paste_at(new)
-        if paste:
-            self.cursor = paste[1]
-        else:
-            self.cursor = new
+        paste = self._paste_strictly_inside(new)
+        self.cursor = paste[1] if paste else new
 
     def _word_left(self) -> None:
         """Move cursor to start of current/previous word. Pastes are atomic."""
         if self.cursor == 0:
             return
-        # If at end or inside a paste, jump to its start
-        paste = self._paste_containing(self.cursor) or self._paste_ending_at(self.cursor)
+        paste = self._paste_containing(self.cursor)
+        if not paste:
+            for s, e in self.pastes:
+                if e == self.cursor:
+                    paste = (s, e)
+                    break
         if paste:
             self.cursor = paste[0]
             return
-        # Move back one to get off a boundary
         self.cursor -= 1
-        # Skip spaces backwards
         while self.cursor > 0 and self.value[self.cursor] == " ":
-            p = self._paste_at(self.cursor)
+            p = self._paste_strictly_inside(self.cursor)
             if p:
                 self.cursor = p[0]
                 return
             self.cursor -= 1
-        # Skip word chars backwards to find start of word
         while self.cursor > 0 and self.value[self.cursor - 1] != " ":
-            p = self._paste_at(self.cursor - 1)
+            p = self._paste_strictly_inside(self.cursor - 1)
             if p:
                 self.cursor = p[0]
                 return
@@ -169,19 +151,23 @@ class TextInput:
         """Move cursor to start of next word. Pastes are atomic."""
         if self.cursor >= len(self.value):
             return
-        # If inside or at start of a paste, jump to its end
-        paste = self._paste_containing(self.cursor) or self._paste_starting_at(self.cursor)
+        paste = self._paste_containing(self.cursor)
+        if not paste:
+            for s, e in self.pastes:
+                if s == self.cursor:
+                    paste = (s, e)
+                    break
         if paste:
             self.cursor = paste[1]
-            # Continue to find start of next word
-        # Skip current word chars
         while self.cursor < len(self.value) and self.value[self.cursor] != " ":
-            p = self._paste_starting_at(self.cursor)
-            if p:
-                self.cursor = p[1]
-                break
-            self.cursor += 1
-        # Skip spaces to land on start of next word
+            for s, e in self.pastes:
+                if s == self.cursor:
+                    self.cursor = e
+                    break
+            else:
+                self.cursor += 1
+                continue
+            break
         while self.cursor < len(self.value) and self.value[self.cursor] == " ":
             self.cursor += 1
 
