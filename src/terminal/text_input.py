@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from terminal.term import Paste
@@ -134,14 +135,13 @@ class TextInput:
             self.cursor = paste.start
             return
         self.cursor -= 1
-        while self.cursor > 0 and self.value[self.cursor] == " ":
-            p = self._find_paste(self.cursor)
-            if p:
-                self.cursor = p.start
-                return
-            self.cursor -= 1
-        while self.cursor > 0 and self.value[self.cursor - 1] != " ":
-            p = self._find_paste(self.cursor - 1)
+        self._skip_left(lambda c: c == " ")
+        self._skip_left(lambda c: c != " ", offset=-1)
+
+    def _skip_left(self, pred: Callable[[str], bool], offset: int = 0) -> None:
+        """Move cursor left while pred holds, stopping at paste boundaries."""
+        while self.cursor > 0 and pred(self.value[self.cursor + offset]):
+            p = self._find_paste(self.cursor + offset)
             if p:
                 self.cursor = p.start
                 return
