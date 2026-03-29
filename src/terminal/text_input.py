@@ -101,6 +101,16 @@ class TextInput:
                 return p
         return None
 
+    def _paste_at(self, pos: int) -> PasteRange | None:
+        """Return paste range starting at pos, or containing/ending at pos."""
+        hit = self._find_paste(pos, include_end=True)
+        if hit:
+            return hit
+        for p in self.pastes:
+            if p.start == pos:
+                return p
+        return None
+
     def _move_left(self) -> None:
         if self.cursor == 0:
             return
@@ -141,24 +151,20 @@ class TextInput:
         """Move cursor to start of next word. Pastes are atomic."""
         if self.cursor >= len(self.value):
             return
-        paste = self._find_paste(self.cursor, include_end=True)
-        if not paste:
-            for p in self.pastes:
-                if p.start == self.cursor:
-                    paste = p
-                    break
+        paste = self._paste_at(self.cursor)
         if paste:
             self.cursor = paste.end
-        while self.cursor < len(self.value) and self.value[self.cursor] != " ":
-            for p in self.pastes:
-                if p.start == self.cursor:
-                    self.cursor = p.end
-                    break
-            else:
-                self.cursor += 1
-                continue
-            break
+        self._skip_non_space_right()
         while self.cursor < len(self.value) and self.value[self.cursor] == " ":
+            self.cursor += 1
+
+    def _skip_non_space_right(self) -> None:
+        """Advance cursor past non-space characters, jumping over pastes."""
+        while self.cursor < len(self.value) and self.value[self.cursor] != " ":
+            hit = self._paste_at(self.cursor)
+            if hit:
+                self.cursor = hit.end
+                return
             self.cursor += 1
 
     # ── Insert / Delete ──────────────────────────────────────────────
@@ -198,17 +204,10 @@ class TextInput:
     def _delete_word(self) -> None:
         if self.cursor == 0:
             return
-        paste = self._find_paste(self.cursor, include_end=True)
-        if paste:
+        if self._find_paste(self.cursor, include_end=True):
             self._backspace()
             return
-        # Find word boundary but don't cross into a paste
-        before = self.value[:self.cursor].rstrip()
-        cut_pos = before.rfind(" ") + 1 if " " in before else 0
-        # Clamp to the end of any paste that sits between cut_pos and cursor
-        for p in self.pastes:
-            if p.start < self.cursor and p.end > cut_pos and p.end <= self.cursor:
-                cut_pos = p.end
+        cut_pos = self._word_boundary_left()
         removed = self.cursor - cut_pos
         if removed == 0:
             return
@@ -216,6 +215,15 @@ class TextInput:
         self.cursor = cut_pos
         self._shift_pastes(cut_pos, -removed)
         self.pastes = [p for p in self.pastes if p.end > p.start]
+
+    def _word_boundary_left(self) -> int:
+        """Find the start of the word to the left, respecting paste boundaries."""
+        before = self.value[:self.cursor].rstrip()
+        pos = before.rfind(" ") + 1 if " " in before else 0
+        for p in self.pastes:
+            if p.start < self.cursor and p.end > pos and p.end <= self.cursor:
+                pos = p.end
+        return pos
 
     # ── Paste range helpers ──────────────────────────────────────────
 
