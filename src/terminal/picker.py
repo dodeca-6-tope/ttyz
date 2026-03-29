@@ -124,21 +124,17 @@ class Picker:
             self._filter()
 
     def view(self) -> View:
-        items: list[Item] = []
-        visible_end = min(self.scroll + self._max_height, len(self._filtered))
-        for vi in range(self.scroll, visible_end):
-            orig_idx, _indices = self._filtered[vi]
-            items.append(Item(
-                name=self._choices[orig_idx].name,
+        end = min(self.scroll + self._max_height, len(self._filtered))
+        items = [
+            Item(
+                name=self._choices[idx].name,
                 cursor=vi == self.cursor,
-                selected=orig_idx in self.selected,
-            ))
-
-        return View(
-            query=self._qi.display(),
-            filtered=len(self._filtered),
-            items=items,
-        )
+                selected=idx in self.selected,
+            )
+            for vi in range(self.scroll, end)
+            for idx, _ in [self._filtered[vi]]
+        ]
+        return View(query=self._qi.display(), filtered=len(self._filtered), items=items)
 
     def _filter(self) -> None:
         self._filtered = []
