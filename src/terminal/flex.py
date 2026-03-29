@@ -20,11 +20,11 @@ class Flex:
         """
         if width is None:
             width = os.get_terminal_size().columns - 1
-        sep_w = display_width(sep)
-        return _wrap_chunks([str(c) for c in chunks], width, sep, sep_w)
+        return _wrap_chunks([str(c) for c in chunks], width, sep)
 
 
-def _wrap_chunks(strs: list[str], width: int, sep: str, sep_w: int) -> list[str]:
+def _wrap_chunks(strs: list[str], width: int, sep: str) -> list[str]:
+    sep_w = display_width(sep)
     lines: list[str] = []
     cur_parts: list[str] = []
     cur_w = 0

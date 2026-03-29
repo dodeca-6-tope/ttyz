@@ -234,25 +234,27 @@ class Terminal:
         size = os.get_terminal_size()
         rows, cols = size.lines, size.columns
         resized = rows != self._screen_rows or cols != self._screen_cols
-
         frame = list(lines[:rows]) + [""] * max(0, rows - len(lines))
 
-        parts = ["\033[?2026h"]
-        if resized or not self._screen:
-            parts.append("\033[H" + "\033[K\n".join(frame) + "\033[K")
-        else:
-            for i in range(rows):
-                old = self._screen[i] if i < len(self._screen) else ""
-                if frame[i] != old:
-                    parts.append(f"\033[{i + 1};1H{frame[i]}\033[K")
-        parts.append("\033[?2026l")
-
-        sys.stdout.buffer.write("".join(parts).encode())
+        body = self._render_full(frame) if resized or not self._screen else self._render_diff(frame)
+        sys.stdout.buffer.write(f"\033[?2026h{body}\033[?2026l".encode())
         sys.stdout.buffer.flush()
 
         self._screen = frame
         self._screen_rows = rows
         self._screen_cols = cols
+
+    @staticmethod
+    def _render_full(frame: list[str]) -> str:
+        return "\033[H" + "\033[K\n".join(frame) + "\033[K"
+
+    def _render_diff(self, frame: list[str]) -> str:
+        parts: list[str] = []
+        for i, line in enumerate(frame):
+            old = self._screen[i] if i < len(self._screen) else ""
+            if line != old:
+                parts.append(f"\033[{i + 1};1H{line}\033[K")
+        return "".join(parts)
 
     def _enter_raw(self) -> None:
         """Switch to raw mode, re-enable output processing for \\n → \\r\\n."""
