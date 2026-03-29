@@ -89,27 +89,39 @@ class Picker:
         event = self._EVENTS.get(key)
         if event:
             return event
-        if key == "up":
-            if self.cursor > 0:
-                self.cursor -= 1
-                self.scroll = min(self.scroll, self.cursor)
-        elif key == "down":
-            if self.cursor < len(self._filtered) - 1:
-                self.cursor += 1
-                if self.cursor >= self.scroll + self._max_height:
-                    self.scroll = self.cursor - self._max_height + 1
-        elif key == "shift-tab" and self._multiselect:
-            if self.selected:
-                self.selected.clear()
-            else:
-                self.selected.update(i for i, _ in self._filtered)
-        elif key == "tab" and self._multiselect:
-            if self._filtered:
-                self.selected.symmetric_difference_update({self._filtered[self.cursor][0]})
-        elif self._qi.handle_key(key) and self._qi.value != self._prev_query:
+        match key:
+            case "up":        self._move_up()
+            case "down":      self._move_down()
+            case "shift-tab" if self._multiselect: self._toggle_all()
+            case "tab" if self._multiselect:       self._toggle_current()
+            case _:           self._forward_to_input(key)
+        return None
+
+    def _move_up(self) -> None:
+        if self.cursor > 0:
+            self.cursor -= 1
+            self.scroll = min(self.scroll, self.cursor)
+
+    def _move_down(self) -> None:
+        if self.cursor < len(self._filtered) - 1:
+            self.cursor += 1
+            if self.cursor >= self.scroll + self._max_height:
+                self.scroll = self.cursor - self._max_height + 1
+
+    def _toggle_all(self) -> None:
+        if self.selected:
+            self.selected.clear()
+        else:
+            self.selected.update(i for i, _ in self._filtered)
+
+    def _toggle_current(self) -> None:
+        if self._filtered:
+            self.selected.symmetric_difference_update({self._filtered[self.cursor][0]})
+
+    def _forward_to_input(self, key: str) -> None:
+        if self._qi.handle_key(key) and self._qi.value != self._prev_query:
             self._prev_query = self._qi.value
             self._filter()
-        return None
 
     def view(self) -> View:
         items: list[Item] = []
