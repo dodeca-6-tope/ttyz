@@ -121,22 +121,4 @@ class Text(Component):
         return [f"{pad}{c}{pad_r}" for c in chunks]
 
 
-def text(
-    content: str = "",
-    *,
-    max_width: int | str | None = None,
-    wrap: bool = False,
-    padding: int = 0,
-    padding_left: int | None = None,
-    padding_right: int | None = None,
-    ellipsis: bool = False,
-) -> Text:
-    return Text(
-        content,
-        max_width=max_width,
-        wrap=wrap,
-        padding=padding,
-        padding_left=padding_left,
-        padding_right=padding_right,
-        ellipsis=ellipsis,
-    )
+text = Text

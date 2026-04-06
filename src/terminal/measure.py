@@ -35,6 +35,22 @@ def _width_plain(s: str) -> int:
     return w
 
 
+def distribute(total: int, weights: list[int]) -> list[int]:
+    """Distribute total proportionally among weighted slots."""
+    if not weights:
+        return []
+    total_weight = sum(weights)
+    cum_weight = 0
+    cum_space = 0
+    sizes: list[int] = []
+    for w in weights:
+        cum_weight += w
+        target = total * cum_weight // total_weight
+        sizes.append(target - cum_space)
+        cum_space = target
+    return sizes
+
+
 def slice_at_width(s: str, max_width: int) -> str:
     """Slice a plain string to fit within max_width display columns."""
     if s.isascii():

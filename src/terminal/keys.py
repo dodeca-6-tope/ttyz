@@ -158,43 +158,35 @@ class KeyReader:
         # Alt/Option + key
         return ESC_KEYS.get(self._consume())
 
-    def _read_csi(self) -> str | None:
-        """Read a complete CSI sequence from the buffer and parse it."""
-        # CSI sequences end with a byte in 0x40–0x7E (@ through ~)
+    def _csi_end(self) -> int | None:
+        """Find the index of the CSI terminator byte (0x40–0x7E), or None."""
         for i in range(len(self._buf)):
             if 0x40 <= self._buf[i] <= 0x7E:
-                seq = self._consume(i + 1)
-                return parse_csi(seq)
-        # Incomplete — wait for more bytes
-        if self._fill(0.004):
-            for i in range(len(self._buf)):
-                if 0x40 <= self._buf[i] <= 0x7E:
-                    seq = self._consume(i + 1)
-                    return parse_csi(seq)
-        # Give up, consume what we have
-        seq = self._consume(len(self._buf))
-        return parse_csi(seq)
+                return i
+        return None
+
+    def _read_csi(self) -> str | None:
+        """Read a complete CSI sequence from the buffer and parse it."""
+        end = self._csi_end()
+        if end is None and self._fill(0.004):
+            end = self._csi_end()
+        return parse_csi(
+            self._consume((end + 1) if end is not None else len(self._buf))
+        )
 
     def _read_paste(self) -> Paste:
         """Read bracketed paste content until \\x1b[201~."""
         while True:
             idx = self._buf.find(b"\x1b[201~")
             if idx >= 0:
-                text = (
-                    bytes(self._buf[:idx])
-                    .decode("utf-8", errors="replace")
-                    .replace("\r", "\n")
-                )
+                raw = bytes(self._buf[:idx])
                 del self._buf[: idx + 6]
-                return Paste(text)
-            if not self._fill(0.1):
-                text = (
-                    bytes(self._buf)
-                    .decode("utf-8", errors="replace")
-                    .replace("\r", "\n")
-                )
+            elif not self._fill(0.1):
+                raw = bytes(self._buf)
                 self._buf.clear()
-                return Paste(text)
+            else:
+                continue
+            return Paste(raw.decode("utf-8", errors="replace").replace("\r", "\n"))
 
 
 def parse_csi(csi: bytes) -> str | None:

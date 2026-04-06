@@ -30,7 +30,7 @@ from terminal.components import (
 )
 from terminal.keys import Paste
 from terminal.style import bold, color, dim, italic, reverse
-from terminal.term import TTY, Terminal
+from terminal.term import TTY
 
 __all__ = [
     "Box",
@@ -45,7 +45,6 @@ __all__ = [
     "ScrollState",
     "TTY",
     "TableRow",
-    "Terminal",
     "Text",
     "ToastState",
     "bold",

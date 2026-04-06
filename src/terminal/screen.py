@@ -14,7 +14,7 @@ def clip_and_pad(line: str, width: int) -> str:
     if "\033" not in line and line.isascii():
         n = len(line)
         return line[:width] if n >= width else line + " " * (width - n)
-    return _clip_pad_scan(line, width)
+    return _clip_scan(line, width, pad_to=True)
 
 
 def clip(line: str, max_width: int) -> str:
@@ -37,7 +37,7 @@ def _ansi_end(line: str, pos: int) -> int:
     return end + 1
 
 
-def _clip_pad_scan(line: str, width: int) -> str:
+def _clip_scan(line: str, width: int, *, pad_to: bool = False) -> str:
     visible = 0
     pos = 0
     while pos < len(line):
@@ -49,23 +49,8 @@ def _clip_pad_scan(line: str, width: int) -> str:
         if visible > width:
             return line[:pos] + "\033[0m"
         pos += 1
-    if visible < width:
+    if pad_to and visible < width:
         return line + " " * (width - visible)
-    return line
-
-
-def _clip_scan(line: str, max_width: int) -> str:
-    visible = 0
-    pos = 0
-    while pos < len(line):
-        end = _ansi_end(line, pos)
-        if end != pos:
-            pos = end
-            continue
-        visible += char_width(line[pos])
-        if visible > max_width:
-            return line[:pos] + "\033[0m"
-        pos += 1
     return line
 
 

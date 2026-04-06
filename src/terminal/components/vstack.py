@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from terminal.components.base import Component
 from terminal.components.spacer import Spacer
+from terminal.measure import distribute
 
 
 class VStack(Component):
@@ -48,15 +49,8 @@ class VStack(Component):
         used = self._spacing * max(0, len(self._children) - 1)
         used += sum(len(r) for r in fixed if r is not None)
         remaining = max(0, height - used)
-        total_weight = sum(w for _, w in weights)
-        cum_weight = 0
-        cum_space = 0
-        heights: dict[int, int] = {}
-        for i, w in weights:
-            cum_weight += w
-            target = remaining * cum_weight // total_weight
-            heights[i] = target - cum_space
-            cum_space = target
+        shares = distribute(remaining, [w for _, w in weights])
+        heights = {i: h for (i, _), h in zip(weights, shares)}
 
         return self._join(
             [

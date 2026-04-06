@@ -58,11 +58,11 @@ class _Torus(t.Component):
         self._a = a
         self._b = b
 
-    def flex_grow(self) -> bool:
-        return True
+    def flex_grow_width(self) -> int:
+        return 1
 
-    def flex_grow_height(self) -> bool:
-        return True
+    def flex_grow_height(self) -> int:
+        return 1
 
     def render(self, width: int, height: int | None = None) -> list[str]:
         height = height or 20
@@ -185,7 +185,7 @@ if __name__ == "__main__":
 
             # render
             t0 = time.perf_counter()
-            term.render(view(s).render(term.size.columns, term.size.lines))
+            term.screen.render(view(s).render(term.size.columns, term.size.lines))
             s.render_time = time.perf_counter() - t0
 
             # input (timeout = remaining frame budget @ ~60fps)

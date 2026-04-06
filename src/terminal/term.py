@@ -11,31 +11,13 @@ import termios
 import tty
 from collections.abc import Callable
 from types import FrameType
-from typing import Any, Protocol
+from typing import Any
 
 from terminal.keys import KeyReader, Paste
 from terminal.screen import Screen
 
 _ENTER = "\033[?1049h\033[?25l\033[?7l\033[?2004h\033[?1004h\033[?1000h\033[?1006h"
 _EXIT = "\033[?1006l\033[?1000l\033[?1004l\033[?2004l\033[?7h\033[?25h\033[?1049l"
-
-
-class Terminal(Protocol):
-    """Protocol for terminal backends (real TTY or test fake)."""
-
-    def __enter__(self) -> Terminal: ...
-    def __exit__(self, *_: object) -> None: ...
-    @property
-    def active(self) -> bool: ...
-    @property
-    def size(self) -> os.terminal_size: ...
-    def readkey(self, timeout: float = 1 / 60) -> str | Paste | None: ...
-    def readkey_nowait(self) -> str | Paste | None: ...
-    def render(self, lines: list[str]) -> None: ...
-    def cleanup(self) -> None: ...
-    def suspend(self) -> None: ...
-    def resume(self) -> None: ...
-    def wake(self) -> None: ...
 
 
 class TTY:
@@ -74,7 +56,8 @@ class TTY:
         self.screen.invalidate()
         sys.stdout.write(_EXIT)
         sys.stdout.flush()
-        self._restore()
+        if self._saved and self._fd is not None:
+            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._saved)
         if self._prev_sigwinch is not None:
             signal.signal(signal.SIGWINCH, self._prev_sigwinch)
             self._prev_sigwinch = None
@@ -86,25 +69,19 @@ class TTY:
     def readkey(self, timeout: float = 1 / 60) -> str | Paste | None:
         """Read a single keypress. Returns 'resize' on terminal resize, None on timeout."""
         assert self._keys is not None
-        if self._consume_resize():
+        if self._resized:
+            self._resized = False
             return "resize"
         result = self._keys.read(timeout)
-        if result is None and self._consume_resize():
+        if result is None and self._resized:
+            self._resized = False
             return "resize"
         return result
-
-    def readkey_nowait(self) -> str | Paste | None:
-        """Read a keypress if one is immediately available, else None."""
-        return self.readkey(timeout=0)
 
     @property
     def size(self) -> os.terminal_size:
         """Current terminal dimensions (columns, lines)."""
         return os.get_terminal_size()
-
-    def render(self, lines: list[str]) -> None:
-        """Render a frame to the screen."""
-        self.screen.render(lines)
 
     def wake(self) -> None:
         """Wake the event loop from any thread."""
@@ -119,7 +96,8 @@ class TTY:
         """Leave alt screen and restore terminal for a child process."""
         sys.stdout.write(_EXIT)
         sys.stdout.flush()
-        self._restore()
+        if self._saved and self._fd is not None:
+            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._saved)
 
     def resume(self) -> None:
         """Re-enter alt screen and raw mode after a child process."""
@@ -135,14 +113,3 @@ class TTY:
         termios.tcsetattr(self._fd, termios.TCSADRAIN, attrs)
         sys.stdout.write(_ENTER)
         sys.stdout.flush()
-
-    def _consume_resize(self) -> bool:
-        if self._resized:
-            self._resized = False
-            return True
-        return False
-
-    def _restore(self) -> None:
-        """Restore saved terminal attributes."""
-        if self._saved and self._fd is not None:
-            termios.tcsetattr(self._fd, termios.TCSADRAIN, self._saved)

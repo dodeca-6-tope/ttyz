@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from terminal.components.base import Component
+from terminal.measure import distribute
 from terminal.screen import pad
 
 
@@ -46,14 +47,10 @@ class Table(Component):
             )
             remaining = max(0, width - fixed)
             sorted_growers = sorted(grow_cols.items())
-            total_weight = sum(w for _, w in sorted_growers)
-            cum_weight = 0
-            cum_space = 0
-            for ci, w in sorted_growers:
-                cum_weight += w
-                target = remaining * cum_weight // total_weight
-                col_widths[ci] = target - cum_space
-                cum_space = target
+            for (ci, _), w in zip(
+                sorted_growers, distribute(remaining, [w for _, w in sorted_growers])
+            ):
+                col_widths[ci] = w
         return col_widths
 
     def render(self, width: int, height: int | None = None) -> list[str]:

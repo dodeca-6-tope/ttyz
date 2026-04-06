@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from terminal.components.base import Component
 from terminal.components.spacer import Spacer
-from terminal.measure import display_width
+from terminal.measure import display_width, distribute
 from terminal.screen import pad
 
 
@@ -73,14 +73,10 @@ class HStack(Component):
         remaining = max(0, width - sum(col_widths) - gap_total)
 
         if weights:
-            total_weight = sum(w for _, w in weights)
-            cum_weight = 0
-            cum_space = 0
-            for i, w in weights:
-                cum_weight += w
-                target = remaining * cum_weight // total_weight
-                col_widths[i] += target - cum_space
-                cum_space = target
+            for (i, _), extra in zip(
+                weights, distribute(remaining, [w for _, w in weights])
+            ):
+                col_widths[i] += extra
             remaining = 0
 
         columns = [

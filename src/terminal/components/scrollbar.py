@@ -17,20 +17,10 @@ def scrollbar_default(h: int, total: int, offset: int) -> list[str]:
         return [""] * h
     h2 = h * 2
     thumb2 = max(2, h2 * h // total)
-    track2 = h2 - thumb2
     max_off = total - h
-    top2 = offset * track2 // max_off if max_off > 0 else 0
+    top2 = offset * (h2 - thumb2) // max_off if max_off > 0 else 0
     bot2 = top2 + thumb2
-
-    col: list[str] = []
-    for i in range(h):
-        upper = i * 2
-        lower = upper + 1
-        if top2 <= upper < bot2 or top2 <= lower < bot2:
-            col.append("┃")
-        else:
-            col.append(dim("│"))
-    return col
+    return ["┃" if i * 2 < bot2 and (i + 1) * 2 > top2 else dim("│") for i in range(h)]
 
 
 class Scrollbar(Component):
