@@ -1,6 +1,31 @@
 """Tests for Screen rendering — clip, diff, full render."""
 
-from terminal.screen import clip, render_diff, render_full
+from os import terminal_size
+from unittest.mock import patch
+
+from terminal.screen import Screen, clip, render_diff, render_full
+
+
+def _make_screen():
+    """Create a Screen that captures output as a string."""
+    chunks: list[str] = []
+    s = Screen(write=lambda data: chunks.append(data.decode()), flush=lambda: None)
+    return s, chunks
+
+
+def _last_frame(chunks: list[str]) -> list[str]:
+    """Extract visible lines from the last rendered output."""
+    raw = chunks[-1]
+    # Strip synchronized update markers
+    raw = raw.replace("\033[?2026h", "").replace("\033[?2026l", "")
+    # Full render starts with \033[H; diff has \033[row;1H per line
+    raw = raw.replace("\033[H", "")
+    # Split on \n for full render, or on cursor-move sequences for diff
+    if "\n" in raw:
+        return raw.split("\n")
+    import re
+    parts = re.split(r"\033\[\d+;1H", raw)
+    return [p for p in parts if p]
 
 # ── clip ────────────────────────────────────────────────────────────
 
@@ -145,3 +170,40 @@ def test_clip_zero_width():
     result = clip("\033[1mhello\033[0m", 0)
     assert "\033[0m" in result
     assert display_width(strip_ansi(result)) == 0
+
+
+# ── Screen.render ───────────────────────────────────────────────────
+
+
+def test_screen_resize_clears_stale_lines():
+    """After resize, all terminal rows should be written (clearing stale content)."""
+    s, chunks = _make_screen()
+    size = terminal_size((20, 5))
+    with patch("terminal.screen.os.get_terminal_size", return_value=size):
+        s.render(["line1", "line2", "line3", "line4", "line5"])
+    # Now resize to 10 rows but only render 2 lines of content
+    big = terminal_size((20, 10))
+    with patch("terminal.screen.os.get_terminal_size", return_value=big):
+        s.render(["line1", "line2"])
+    frame = _last_frame(chunks)
+    assert len(frame) == 10
+    assert frame[0].startswith("line1")
+    assert frame[1].startswith("line2")
+    # Rows 3-10 should be blank (spaces only)
+    for row in frame[2:]:
+        assert row.strip() == ""
+
+
+def test_screen_shrinking_content_clears_old_rows():
+    """Rendering fewer lines than before should blank the leftover rows."""
+    s, chunks = _make_screen()
+    size = terminal_size((20, 10))
+    with patch("terminal.screen.os.get_terminal_size", return_value=size):
+        s.render(["a", "b", "c", "d", "e"])
+        s.render(["a", "b"])
+    # The diff render should include blank lines for rows 3-5
+    frame = _last_frame(chunks)
+    for line in frame:
+        assert "c" not in line
+        assert "d" not in line
+        assert "e" not in line

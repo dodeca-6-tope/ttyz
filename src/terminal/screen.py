@@ -102,9 +102,12 @@ class Screen:
         cols: int = size.columns
         resized = rows != self._rows or cols != self._cols
         n_content = min(len(lines), rows)
-        n_clear = max(0, len(self._screen) - n_content)
         frame = [clip_and_pad(line, cols) for line in lines[:n_content]]
-        frame += [" " * cols] * n_clear
+        if resized or not self._screen:
+            frame += [" " * cols] * (rows - len(frame))
+        else:
+            n_clear = max(0, len(self._screen) - n_content)
+            frame += [" " * cols] * n_clear
 
         if resized or not self._screen:
             body = render_full(frame)
