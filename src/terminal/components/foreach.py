@@ -17,10 +17,16 @@ class ForEach(Component):
     def flex_basis(self) -> int:
         return max((c.flex_basis() for c in self._children), default=0)
 
+    def flex_grow_width(self) -> int:
+        return max((c.flex_grow_width() for c in self._children), default=0)
+
+    def flex_grow_height(self) -> int:
+        return max((c.flex_grow_height() for c in self._children), default=0)
+
     def render(self, width: int, height: int | None = None) -> list[str]:
         lines: list[str] = []
         for child in self._children:
-            lines.extend(child.render(width))
+            lines.extend(child.render(width, height))
         return lines
 
 

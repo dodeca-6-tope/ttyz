@@ -39,13 +39,13 @@ class HStack(Component):
         _JUSTIFY = {"start", "end", "center", "between"}
         if justify not in _JUSTIFY:
             raise ValueError(f"unknown justify {justify!r}")
-        self.children = children
+        self._children = children
         self._spacing = spacing
         self._justify = justify
         self._wrap = wrap
 
     def _active(self) -> list[Component]:
-        return [c for c in self.children if c.flex_basis() > 0 or c.flex_grow_width()]
+        return [c for c in self._children if c.flex_basis() > 0 or c.flex_grow_width()]
 
     def render(self, width: int, height: int | None = None) -> list[str]:
         if self._wrap:
@@ -53,9 +53,9 @@ class HStack(Component):
         return self._render_fixed(width, height)
 
     def _render_wrap(self, width: int) -> list[str]:
-        if not self.children:
+        if not self._children:
             return [""]
-        strs = [" ".join(c.render(width)) for c in self.children]
+        strs = [" ".join(c.render(width)) for c in self._children]
         return _wrap_chunks(strs, width, self._spacing)
 
     def _render_fixed(self, width: int, height: int | None = None) -> list[str]:
@@ -131,14 +131,14 @@ class HStack(Component):
         return sum(c.flex_basis() for c in active) + gap_total
 
     def flex_grow_width(self) -> int:
-        child_max = max((c.flex_grow_width() for c in self.children), default=0)
+        child_max = max((c.flex_grow_width() for c in self._children), default=0)
         if self._justify != "start":
             return max(1, child_max)
         return child_max
 
     def flex_grow_height(self) -> int:
         return max(
-            (c.flex_grow_height() for c in self.children if not isinstance(c, Spacer)),
+            (c.flex_grow_height() for c in self._children if not isinstance(c, Spacer)),
             default=0,
         )
 

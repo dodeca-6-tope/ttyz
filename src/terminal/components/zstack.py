@@ -42,8 +42,11 @@ class ZStack(Component):
     def render(self, width: int, height: int | None = None) -> list[str]:
         if not self._children:
             return [""]
-        # Render all children, passing height so fill-height children work
-        layers = [c.render(width, height) for c in self._children]
+        # Render children, passing height only to growers (consistent with HStack)
+        layers = [
+            c.render(width, height) if c.flex_grow_height() else c.render(width)
+            for c in self._children
+        ]
         # Base height is the tallest layer, or the given height
         height = height or max(len(layer) for layer in layers)
         # Start with empty canvas
