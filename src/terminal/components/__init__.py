@@ -10,6 +10,7 @@ from terminal.components.input import (
     display_text,
     input,
 )
+from terminal.components.keyed import Keyed
 from terminal.components.list import List, ListState, list
 from terminal.components.scroll import Scroll, ScrollState, scroll
 from terminal.components.spacer import Spacer, spacer
@@ -26,6 +27,7 @@ __all__ = [
     "ForEach",
     "HStack",
     "Input",
+    "Keyed",
     "PasteRange",
     "display_text",
     "Scroll",

@@ -7,9 +7,10 @@ from collections.abc import Callable
 from typing import Generic, TypeVar
 
 from terminal.components.base import Component
+from terminal.components.keyed import Keyed
 from terminal.components.scroll import ScrollState
 
-T = TypeVar("T")
+T = TypeVar("T", bound=Keyed)
 
 
 class ListState(Generic[T]):
@@ -31,6 +32,18 @@ class ListState(Generic[T]):
 
     def move_to(self, index: int) -> None:
         self.cursor = max(0, min(index, self.total - 1)) if self.total else 0
+
+    def set_items(self, items: builtins.list[T] | tuple[T, ...]) -> None:
+        prev = self.current.key if self.current else None
+        self.items = builtins.list(items)
+        if prev is not None:
+            idx = next(
+                (i for i, x in enumerate(self.items) if x.key == prev),
+                self.cursor,
+            )
+            self.move_to(idx)
+        else:
+            self.move_to(self.cursor)
 
     @property
     def offset(self) -> int:

@@ -6,6 +6,7 @@ loose enough to not flake on CI.
 
 import builtins
 import time
+from dataclasses import dataclass
 
 from terminal import (
     Component,
@@ -24,6 +25,11 @@ from terminal import (
 from terminal.components.list import list as tlist
 from terminal.measure import display_width
 from terminal.screen import clip, clip_and_pad, pad, render_diff
+
+
+@dataclass
+class _N:
+    key: int
 
 
 def _timed(fn: object, iterations: int = 1) -> float:
@@ -135,9 +141,9 @@ def test_large_vstack():
 
 def test_large_list():
     """List with 10k items, 10 renders."""
-    state = ListState(builtins.list(range(10_000)))
+    state = ListState([_N(i) for i in range(10_000)])
     elapsed = _timed(
-        lambda: tlist(state, lambda item, sel: text(f"item {item}")).render(
+        lambda: tlist(state, lambda item, sel: text(f"item {item.key}")).render(
             WIDTH, HEIGHT
         ),
         iterations=10,
@@ -214,7 +220,7 @@ def test_scroll_large_content():
 
 def test_realistic_frame():
     """Full app frame: header + 1000-item list + footer, 100 renders."""
-    items = ListState(builtins.list(range(1000)))
+    items = ListState([_N(i) for i in range(1000)])
 
     def build():
         header = hstack(
@@ -227,8 +233,8 @@ def test_realistic_frame():
             items,
             lambda item, sel: hstack(
                 text("▸ " if sel else "  "),
-                text(f"Item {item}", max_width="fill", ellipsis=True),
-                text("✓" if item % 3 == 0 else " "),
+                text(f"Item {item.key}", max_width="fill", ellipsis=True),
+                text("✓" if item.key % 3 == 0 else " "),
             ),
         )
         footer = hstack(
