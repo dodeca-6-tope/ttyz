@@ -8,8 +8,8 @@ from terminal.measure import distribute
 
 
 class VStack(Component):
-    def __init__(self, children: list[Component], *, spacing: int = 0) -> None:
-        self._children = children
+    def __init__(self, *children: Component, spacing: int = 0) -> None:
+        self._children = list(children)
         self._spacing = spacing
 
     def flex_basis(self) -> int:
@@ -70,5 +70,4 @@ class VStack(Component):
         return lines
 
 
-def vstack(*children: Component, spacing: int = 0) -> VStack:
-    return VStack(list(children), spacing=spacing)
+vstack = VStack

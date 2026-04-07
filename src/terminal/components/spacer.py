@@ -18,5 +18,4 @@ class Spacer(Component):
         return 1
 
 
-def spacer() -> Spacer:
-    return Spacer()
+spacer = Spacer

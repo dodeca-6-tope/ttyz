@@ -11,8 +11,10 @@ T = TypeVar("T")
 
 
 class ForEach(Component):
-    def __init__(self, children: list[Component]) -> None:
-        self._children = children
+    def __init__(
+        self, items: Sequence[T], render_fn: Callable[[T, int], Component]
+    ) -> None:
+        self._children = [render_fn(item, i) for i, item in enumerate(items)]
 
     def flex_basis(self) -> int:
         return max((c.flex_basis() for c in self._children), default=0)
@@ -30,5 +32,4 @@ class ForEach(Component):
         return lines
 
 
-def foreach(items: Sequence[T], render_fn: Callable[[T, int], Component]) -> ForEach:
-    return ForEach([render_fn(item, i) for i, item in enumerate(items)])
+foreach = ForEach

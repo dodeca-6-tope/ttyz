@@ -10,13 +10,13 @@ from terminal.screen import pad
 class TableRow:
     """A row of components for use inside a Table."""
 
-    def __init__(self, cells: list[Component]) -> None:
-        self.cells = cells
+    def __init__(self, *cells: Component) -> None:
+        self.cells = list(cells)
 
 
 class Table(Component):
-    def __init__(self, rows: list[TableRow], *, spacing: int = 1) -> None:
-        self._rows = rows
+    def __init__(self, *rows: TableRow, spacing: int = 1) -> None:
+        self._rows = list(rows)
         self._spacing = spacing
         if rows:
             self._col_widths, self._grow_cols = self._measure_columns()
@@ -85,9 +85,6 @@ def _render_row(row: TableRow, col_widths: list[int], sep: str) -> str:
     return sep.join(parts)
 
 
-def table_row(*cells: Component) -> TableRow:
-    return TableRow(list(cells))
+table_row = TableRow
 
-
-def table(*rows: TableRow, spacing: int = 1) -> Table:
-    return Table(list(rows), spacing=spacing)
+table = Table

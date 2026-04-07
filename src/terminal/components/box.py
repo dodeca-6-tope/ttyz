@@ -80,7 +80,4 @@ class Box(Component):
         return f"{tl} {label} {hz * (inner - len(label) - 2)}{tr}"
 
 
-def box(
-    child: Component, *, style: str = "rounded", title: str = "", padding: int = 0
-) -> Box:
-    return Box(child, style=style, title=title, padding=padding)
+box = Box

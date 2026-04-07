@@ -108,10 +108,4 @@ class List(Component, Generic[T]):
         return lines
 
 
-def list(
-    state: ListState[T],
-    render_fn: Callable[[T, bool], Component],
-    *,
-    height: int | str = "fill",
-) -> List[T]:
-    return List(state, render_fn, height=height)
+list = List

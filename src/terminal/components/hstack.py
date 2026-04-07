@@ -28,18 +28,18 @@ def _wrap_chunks(strs: list[str], width: int, gap: int) -> list[str]:
 
 
 class HStack(Component):
+    _JUSTIFY = {"start", "end", "center", "between"}
+
     def __init__(
         self,
-        children: list[Component],
-        *,
+        *children: Component,
         spacing: int = 0,
         justify: str = "start",
         wrap: bool = False,
     ) -> None:
-        _JUSTIFY = {"start", "end", "center", "between"}
-        if justify not in _JUSTIFY:
+        if justify not in self._JUSTIFY:
             raise ValueError(f"unknown justify {justify!r}")
-        self._children = children
+        self._children = list(children)
         self._spacing = spacing
         self._justify = justify
         self._wrap = wrap
@@ -139,10 +139,4 @@ class HStack(Component):
         )
 
 
-def hstack(
-    *children: Component,
-    spacing: int = 0,
-    justify: str = "start",
-    wrap: bool = False,
-) -> HStack:
-    return HStack(list(children), spacing=spacing, justify=justify, wrap=wrap)
+hstack = HStack

@@ -6,8 +6,8 @@ from terminal.components.base import Component
 
 
 class Cond(Component):
-    def __init__(self, condition: bool, child: Component) -> None:
-        self._condition = condition
+    def __init__(self, condition: object, child: Component) -> None:
+        self._condition = bool(condition)
         self._child = child
 
     def flex_basis(self) -> int:
@@ -25,5 +25,4 @@ class Cond(Component):
         return []
 
 
-def cond(condition: object, child: Component) -> Cond:
-    return Cond(bool(condition), child)
+cond = Cond

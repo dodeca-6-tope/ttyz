@@ -47,8 +47,4 @@ class Scrollbar(Component):
         return self._render_fn(h, self._state.total, self._state.offset)
 
 
-def scrollbar(
-    state: ScrollState,
-    render_fn: ScrollbarFn = scrollbar_default,
-) -> Scrollbar:
-    return Scrollbar(state, render_fn=render_fn)
+scrollbar = Scrollbar

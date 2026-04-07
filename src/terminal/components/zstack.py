@@ -21,13 +21,12 @@ class ZStack(Component):
 
     def __init__(
         self,
-        children: list[Component],
-        *,
+        *children: Component,
         align: str = "top-left",
     ) -> None:
         if align not in self._ALIGNS:
             raise ValueError(f"unknown align {align!r}")
-        self._children = children
+        self._children = list(children)
         self._align = align
 
     def flex_basis(self) -> int:
@@ -130,5 +129,4 @@ def _stamp(base: str, col: int, line: str, width: int) -> str:
     return left + "\033[0m" + line + "\033[0m" + restore + right
 
 
-def zstack(*children: Component, align: str = "top-left") -> ZStack:
-    return ZStack(list(children), align=align)
+zstack = ZStack

@@ -267,8 +267,7 @@ class Input(Component):
         return _wrap(text, width)
 
 
-def input(ti: InputBuffer, *, placeholder: str = "", active: bool = True) -> Input:
-    return Input(ti, placeholder=placeholder, active=active)
+input = Input
 
 
 def _wrap(text: str, width: int) -> list[str]:

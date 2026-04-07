@@ -49,11 +49,11 @@ class ScrollState:
 class Scroll(Component):
     def __init__(
         self,
-        children: list[Component],
+        *children: Component,
         state: ScrollState,
         height: int | str = "fill",
     ) -> None:
-        self._children = children
+        self._children = list(children)
         self._state = state
         self._height = height
 
@@ -93,9 +93,4 @@ class Scroll(Component):
         return lines
 
 
-def scroll(
-    *children: Component,
-    state: ScrollState,
-    height: int | str = "fill",
-) -> Scroll:
-    return Scroll(list(children), state=state, height=height)
+scroll = Scroll
