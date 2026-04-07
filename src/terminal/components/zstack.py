@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from terminal.components.base import Component
 from terminal.measure import ANSI_RE, char_width, display_width
+from terminal.screen import clip
 
 
 class ZStack(Component):
@@ -41,26 +42,31 @@ class ZStack(Component):
     def render(self, width: int, height: int | None = None) -> list[str]:
         if not self._children:
             return [""]
-        # Render children, passing height only to growers (consistent with HStack)
+        # Growers receive height as a proposal; others render at natural size
         layers = [
             c.render(width, height) if c.flex_grow_height() else c.render(width)
             for c in self._children
         ]
-        # Base height is the tallest layer, or the given height
-        height = height or max(len(layer) for layer in layers)
-        # Start with empty canvas
-        canvas = [" " * width for _ in range(height)]
-        # Paint each layer on top
-        for layer in layers:
+        # Canvas = first child. Overlays align and clip within it.
+        base = layers[0]
+        height = len(base)
+        base_w = max((display_width(l) for l in base), default=0)
+        canvas_w = width if self.flex_grow_width() else base_w
+        canvas = [" " * canvas_w for _ in range(height)]
+        # First child always top-left
+        for i, line in enumerate(base):
+            canvas[i] = _stamp(canvas[i], 0, line, canvas_w)
+        # Overlays align within the first child's bounds
+        for layer in layers[1:]:
             layer_w = max((display_width(l) for l in layer), default=0)
             row_off, col_off = _offsets(
-                self._align, (width, height), (layer_w, len(layer))
+                self._align, (base_w, height), (layer_w, len(layer))
             )
             start = max(0, -row_off)
             end = min(len(layer), height - row_off)
             for i in range(start, end):
                 canvas[row_off + i] = _stamp(
-                    canvas[row_off + i], col_off, layer[i], width
+                    canvas[row_off + i], col_off, layer[i], canvas_w
                 )
         return canvas
 
@@ -73,9 +79,9 @@ def _offsets(
     align: str, canvas: tuple[int, int], layer: tuple[int, int]
 ) -> tuple[int, int]:
     """Compute (row_offset, col_offset) for alignment."""
-    parts = align.split("-") if "-" in align else [align, align]
-    vf = next((_V_OFFSETS[p] for p in parts if p in _V_OFFSETS), 0)
-    hf = next((_H_OFFSETS[p] for p in parts if p in _H_OFFSETS), 0)
+    parts = align.split("-") if "-" in align else [align]
+    vf = next((_V_OFFSETS[p] for p in parts if p in _V_OFFSETS), 0.5)
+    hf = next((_H_OFFSETS[p] for p in parts if p in _H_OFFSETS), 0.5)
     w, h = canvas
     lw, lh = layer
     return max(0, int((h - lh) * vf)), max(0, int((w - lw) * hf))
@@ -114,7 +120,11 @@ def _split_at_col(s: str, col: int) -> tuple[str, str]:
 
 def _stamp(base: str, col: int, line: str, width: int) -> str:
     """Write line onto base at col, overwriting existing content."""
+    max_w = width - col
     line_w = display_width(line)
+    if line_w > max_w:
+        line = clip(line, max_w)
+        line_w = max_w
     if col == 0 and line_w >= width:
         return line
     # Pad base to width if needed

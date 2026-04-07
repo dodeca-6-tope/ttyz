@@ -87,10 +87,10 @@ def test_zstack_passes_height_only_to_growers():
 def test_zstack_does_not_pass_height_to_fixed():
     """A non-grower child in ZStack should not receive height."""
     s, items = _make_scroll(3)
-    # scroll is the grower (gets height), text is fixed (should not)
+    # text is the base (3 lines), scroll overlays and clips to it
     z = zstack(text("base\nline2\nline3"), scroll(*items, state=s))
     lines = z.render(40, 5)
-    assert len(lines) == 5
+    assert len(lines) == 3
     assert s.height == 5
 
 
