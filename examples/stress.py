@@ -8,39 +8,12 @@ clip_and_pad, display_width, render_diff.
 
 from __future__ import annotations
 
-import math
 import time
 from dataclasses import dataclass
 
-import terminal as t
+from _torus import render_torus
 
-R1 = 1.0
-R2 = 2.0
-K2 = 5.0
-SHADE = ".,-~:;=!*#$@"
-COLORS = [
-    53,
-    54,
-    55,
-    56,
-    57,
-    93,
-    92,
-    91,
-    90,
-    89,
-    125,
-    161,
-    197,
-    203,
-    209,
-    215,
-    221,
-    227,
-    191,
-    155,
-    119,
-]
+import terminal as t
 
 
 @dataclass
@@ -53,54 +26,9 @@ class S:
     render_time: float = 0.0
 
 
-def _render_torus(
-    a: float,
-    b: float,
-    width: int,
-    height: int,
-) -> list[str]:
-    grid = [[" "] * width for _ in range(height)]
-    zbuf = [[0.0] * width for _ in range(height)]
-    k1 = width * K2 * 0.4 / (R1 + R2)
-    cos_a, sin_a = math.cos(a), math.sin(a)
-    cos_b, sin_b = math.cos(b), math.sin(b)
-
-    theta = 0.0
-    while theta < 6.28:
-        cos_t, sin_t = math.cos(theta), math.sin(theta)
-        cx = R2 + R1 * cos_t
-        cy = R1 * sin_t
-        phi = 0.0
-        while phi < 6.28:
-            cos_p, sin_p = math.cos(phi), math.sin(phi)
-            x = cx * (cos_b * cos_p + sin_a * sin_b * sin_p) - cy * cos_a * sin_b
-            y = cx * (sin_b * cos_p - sin_a * cos_b * sin_p) + cy * cos_a * cos_b
-            z = K2 + cos_a * cx * sin_p + cy * sin_a
-            ooz = 1.0 / z
-            xp = int(width / 2 + k1 * ooz * x)
-            yp = int(height / 2 - k1 * ooz * y * 0.5)
-            lum = (
-                cos_p * cos_t * sin_b
-                - cos_a * cos_t * sin_p
-                - sin_a * sin_t
-                + cos_b * (cos_a * sin_t - cos_t * sin_a * sin_p)
-            )
-            if 0 <= xp < width and 0 <= yp < height and ooz > zbuf[yp][xp]:
-                zbuf[yp][xp] = ooz
-                li = max(0, min(len(SHADE) - 1, int(lum * 8)))
-                ci = max(
-                    0,
-                    min(len(COLORS) - 1, int((lum + 1) / 2 * (len(COLORS) - 1))),
-                )
-                grid[yp][xp] = f"\033[38;5;{COLORS[ci]}m{SHADE[li]}\033[0m"
-            phi += 0.04
-        theta += 0.07
-    return ["".join(row) for row in grid]
-
-
 def _torus(a: float, b: float) -> t.Renderable:
     def render(width: int, height: int | None = None) -> list[str]:
-        return _render_torus(a, b, width, height or 20)
+        return render_torus(a, b, width, height or 20)
 
     return t.Renderable(render, grow=1)
 
