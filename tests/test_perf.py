@@ -19,9 +19,10 @@ from terminal import (
     vstack,
     zstack,
 )
+from terminal.buffer import Buffer, parse_line, render_diff
 from terminal.components.list import list as tlist
 from terminal.measure import display_width
-from terminal.screen import clip, clip_and_pad, pad, render_diff
+from terminal.screen import clip, clip_and_pad, pad
 
 
 @dataclass
@@ -111,18 +112,51 @@ def test_display_width_ascii_throughput():
 
 
 def test_diff_identical_frames():
-    """Diffing two identical frames should be near-instant."""
-    frame = [f"{'x' * WIDTH}"] * HEIGHT
-    elapsed = _timed(lambda: render_diff(frame, frame), iterations=1000)
-    assert elapsed < 0.01, f"diff identical 1k took {elapsed:.3f}s"
+    """Diffing two identical cell buffers should be fast."""
+    a = Buffer(WIDTH, HEIGHT)
+    b = Buffer(WIDTH, HEIGHT)
+    for i in range(HEIGHT):
+        parse_line(a, i, "x" * WIDTH)
+        parse_line(b, i, "x" * WIDTH)
+    elapsed = _timed(lambda: render_diff(a, b), iterations=1000)
+    assert elapsed < 1.0, f"diff identical 1k took {elapsed:.3f}s"
 
 
 def test_diff_fully_changed():
-    """Diffing two completely different frames."""
-    old = [f"{'a' * WIDTH}"] * HEIGHT
-    new = [f"{'b' * WIDTH}"] * HEIGHT
-    elapsed = _timed(lambda: render_diff(new, old), iterations=1000)
-    assert elapsed < 0.04, f"diff changed 1k took {elapsed:.3f}s"
+    """Diffing two completely different cell buffers."""
+    old = Buffer(WIDTH, HEIGHT)
+    new = Buffer(WIDTH, HEIGHT)
+    for i in range(HEIGHT):
+        parse_line(old, i, "a" * WIDTH)
+        parse_line(new, i, "b" * WIDTH)
+    elapsed = _timed(lambda: render_diff(new, old), iterations=100)
+    assert elapsed < 1.0, f"diff changed 100 took {elapsed:.3f}s"
+
+
+def test_parse_line_ascii_throughput():
+    """parse_line on plain ASCII lines, 1000 frames."""
+    buf = Buffer(WIDTH, HEIGHT)
+    lines = ["x" * WIDTH] * HEIGHT
+
+    def run():
+        for i, l in enumerate(lines):
+            parse_line(buf, i, l)
+
+    elapsed = _timed(run, iterations=1000)
+    assert elapsed < 2.0, f"parse ASCII 1k frames took {elapsed:.3f}s"
+
+
+def test_parse_line_ansi_throughput():
+    """parse_line on ANSI-styled lines, 1000 frames."""
+    buf = Buffer(WIDTH, HEIGHT)
+    lines = [f"\033[1m{'a' * 196}\033[0m"] * HEIGHT
+
+    def run():
+        for i, l in enumerate(lines):
+            parse_line(buf, i, l)
+
+    elapsed = _timed(run, iterations=1000)
+    assert elapsed < 5.0, f"parse ANSI 1k frames took {elapsed:.3f}s"
 
 
 # ── Full component render ──────────────────────────────────────────

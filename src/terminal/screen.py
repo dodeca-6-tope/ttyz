@@ -1,4 +1,4 @@
-"""Screen rendering — diffing, clipping, frame output."""
+"""Screen rendering — clipping utilities and cell-based frame output."""
 
 from __future__ import annotations
 
@@ -6,6 +6,9 @@ import os
 import sys
 from collections.abc import Callable
 
+from terminal.buffer import Buffer, parse_line
+from terminal.buffer import render_diff as _buf_diff
+from terminal.buffer import render_full as _buf_full
 from terminal.measure import char_width, display_width
 
 
@@ -63,7 +66,7 @@ def pad(line: str, width: int) -> str:
 
 
 class Screen:
-    """Diff-based terminal screen writer."""
+    """Cell-based terminal screen writer with cell-level diffing."""
 
     def __init__(
         self,
@@ -72,43 +75,33 @@ class Screen:
     ) -> None:
         self._write = write
         self._flush = flush
-        self._screen: list[str] = []
+        self._prev: Buffer | None = None
         self._rows = 0
         self._cols = 0
 
     def invalidate(self) -> None:
         """Force a full redraw on next render."""
-        self._screen = []
+        self._prev = None
 
     def render(self, lines: list[str]) -> None:
-        """Write a frame with diff-based update to minimize flicker."""
+        """Write a frame with cell-level diffing to minimize output."""
         size = os.get_terminal_size()
         rows: int = size.lines
         cols: int = size.columns
-        full = rows != self._rows or cols != self._cols or not self._screen
-        n_content = min(len(lines), rows)
-        frame = [clip_and_pad(line, cols) for line in lines[:n_content]]
-        if full:
-            frame += [" " * cols] * (rows - len(frame))
-            body = render_full(frame)
+        full = rows != self._rows or cols != self._cols or self._prev is None
+
+        buf = Buffer(cols, rows)
+        for i, line in enumerate(lines[: min(len(lines), rows)]):
+            parse_line(buf, i, line)
+
+        if full or self._prev is None:
+            body = _buf_full(buf)
         else:
-            frame += [" " * cols] * max(0, len(self._screen) - n_content)
-            body = render_diff(frame, self._screen)
+            body = _buf_diff(buf, self._prev)
+
         self._write(f"\033[?2026h{body}\033[?2026l".encode())
         self._flush()
 
-        self._screen = frame
+        self._prev = buf
         self._rows = rows
         self._cols = cols
-
-
-def render_full(frame: list[str]) -> str:
-    return "\033[H" + "\n".join(frame)
-
-
-def render_diff(frame: list[str], prev: list[str]) -> str:
-    return "".join(
-        f"\033[{i + 1};1H{line}"
-        for i, line in enumerate(frame)
-        if line != (prev[i] if i < len(prev) else "")
-    )
