@@ -1,11 +1,9 @@
 """Tests for Cond component."""
 
-from terminal import cond, text
-from terminal.measure import strip_ansi
+from helpers import clean
 
-
-def clean(lines: list[str]) -> list[str]:
-    return [strip_ansi(l) for l in lines]
+from terminal import cond, scroll, text
+from terminal.components.scroll import ScrollState
 
 
 def test_true_renders_child():
@@ -29,20 +27,12 @@ def test_flex_basis():
 
 
 def test_grow_true():
-    from terminal.components.scroll import ScrollState
-
     s = ScrollState()
-    from terminal import scroll
-
     assert cond(True, scroll(text("a"), state=s)).grow
 
 
 def test_grow_false_condition():
-    from terminal.components.scroll import ScrollState
-
     s = ScrollState()
-    from terminal import scroll
-
     assert not cond(False, scroll(text("a"), state=s)).grow
 
 
@@ -51,11 +41,6 @@ def test_grow_non_grower():
 
 
 def test_height_passed_to_child():
-    from terminal.components.scroll import ScrollState
-
     s = ScrollState()
-    from terminal import scroll
-
     c = cond(True, scroll(text("a"), text("b"), text("c"), state=s))
-    result = clean(c.render(80, 2))
-    assert result == ["a", "b"]
+    assert clean(c.render(80, 2)) == ["a", "b"]

@@ -1,9 +1,10 @@
 """Tests for weighted flex_grow distribution."""
 
+from helpers import vis
+
 from terminal import hstack, text, vstack
 from terminal.components.base import Renderable
 from terminal.components.table import table, table_row
-from terminal.measure import display_width, strip_ansi
 
 
 def weighted(label: str, grow: int = 0) -> Renderable:
@@ -17,162 +18,101 @@ def weighted(label: str, grow: int = 0) -> Renderable:
     return Renderable(render, grow=grow)
 
 
-def clean(lines: list[str]) -> list[str]:
-    return [strip_ansi(l) for l in lines]
-
-
 # ── HStack weighted ────────────────────────────────────────────────
 
 
 def test_hstack_equal_weights():
-    """Two children with weight=1 split evenly (same as old behavior)."""
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=1)
-    lines = clean(hstack(a, b).render(20))
-    assert len(lines) == 1
-    assert display_width(lines[0]) == 20
-    # Each gets 10 cols
-    assert lines[0][:10].strip() == "A"
-    assert lines[0][10:].strip() == "B"
+    assert vis(hstack(weighted("A", 1), weighted("B", 1)).render(20)) == [
+        "A·········B·········",
+    ]
 
 
 def test_hstack_2_to_1_weight():
-    """Weight 2 gets twice the space of weight 1."""
-    a = weighted("A", grow=2)
-    b = weighted("B", grow=1)
-    lines = clean(hstack(a, b).render(30))
-    # A gets 20, B gets 10
-    assert lines[0][:20].strip() == "A"
-    assert lines[0][20:].strip() == "B"
+    assert vis(hstack(weighted("A", 2), weighted("B", 1)).render(30)) == [
+        "A···················B·········",
+    ]
 
 
 def test_hstack_3_to_1_weight():
-    a = weighted("A", grow=3)
-    b = weighted("B", grow=1)
-    lines = clean(hstack(a, b).render(40))
-    # A gets 30, B gets 10
-    assert display_width(lines[0][:30].rstrip()) <= 30
-    assert lines[0][:30].strip() == "A"
-    assert lines[0][30:].strip() == "B"
+    assert vis(hstack(weighted("A", 3), weighted("B", 1)).render(40)) == [
+        "A·····························B·········",
+    ]
 
 
 def test_hstack_uneven_remainder():
-    """Remainder pixels distributed via cumulative rounding."""
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=1)
-    c = weighted("C", grow=1)
-    lines = clean(hstack(a, b, c).render(20))
-    # 20*1//3=6, 20*2//3=13, 20*3//3=20 → A=6, B=7, C=7
-    widths = [6, 7, 7]
-    pos = 0
-    for i, w in enumerate(widths):
-        cell = lines[0][pos : pos + w]
-        assert cell.strip() == chr(ord("A") + i)
-        pos += w
+    #          A=6         B=7          C=7
+    assert vis(hstack(weighted("A", 1), weighted("B", 1), weighted("C", 1)).render(20)) == [
+        "A·····B······C······",
+    ]
 
 
 def test_hstack_mixed_fixed_and_weighted():
-    """Fixed-basis child + two weighted growers."""
-    fixed = text("XX")  # basis=2, no grow
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=2)
-    lines = clean(hstack(fixed, a, b).render(32))
-    # fixed=2, remaining=30, A=10, B=20
-    assert lines[0][:2] == "XX"
-    assert lines[0][2:12].strip() == "A"
-    assert lines[0][12:].strip() == "B"
+    #          XX  A=10             B=20
+    assert vis(hstack(text("XX"), weighted("A", 1), weighted("B", 2)).render(32)) == [
+        "XXA·········B···················",
+    ]
 
 
 def test_hstack_weight_with_spacing():
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=1)
-    lines = clean(hstack(a, b, spacing=2).render(22))
-    # 22 - 2 spacing = 20, split 10/10
-    assert lines[0][:10].strip() == "A"
-    assert lines[0][10:12] == "  "
-    assert lines[0][12:].strip() == "B"
+    assert vis(hstack(weighted("A", 1), weighted("B", 1), spacing=2).render(22)) == [
+        "A···········B·········",
+    ]
 
 
 # ── VStack weighted ────────────────────────────────────────────────
 
 
 def test_vstack_equal_height_weights():
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=1)
-    lines = vstack(a, b).render(10, 20)
+    lines = vis(vstack(weighted("A", 1), weighted("B", 1)).render(10, 20))
     assert len(lines) == 20
-    # Each gets 10 rows
-    assert lines[0].strip() == "A"
-    assert lines[10].strip() == "B"
+    assert lines[0].startswith("A")
+    assert lines[10].startswith("B")
 
 
 def test_vstack_2_to_1_height():
-    a = weighted("A", grow=2)
-    b = weighted("B", grow=1)
-    lines = vstack(a, b).render(10, 30)
+    lines = vis(vstack(weighted("A", 2), weighted("B", 1)).render(10, 30))
     assert len(lines) == 30
-    # A gets 20, B gets 10
-    assert lines[0].strip() == "A"
-    assert lines[20].strip() == "B"
+    assert lines[0].startswith("A")
+    assert lines[20].startswith("B")
 
 
 def test_vstack_mixed_fixed_and_weighted():
-    header = text("HEAD")  # 1 line, no grow
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=2)
-    lines = vstack(header, a, b).render(10, 31)
+    lines = vis(vstack(text("HEAD"), weighted("A", 1), weighted("B", 2)).render(10, 31))
     assert len(lines) == 31
-    # header=1, remaining=30 → A=10, B=20
-    assert lines[0].strip() == "HEAD"
-    assert lines[1].strip() == "A"
-    assert lines[11].strip() == "B"
+    assert lines[0] == "HEAD"
+    assert lines[1].startswith("A")
+    assert lines[11].startswith("B")
 
 
 def test_vstack_uneven_height_remainder():
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=1)
-    c = weighted("C", grow=1)
-    lines = vstack(a, b, c).render(5, 20)
-    # 20*1//3=6, 20*2//3=13, 20*3//3=20 → A=6, B=7, C=7
+    lines = vis(vstack(weighted("A", 1), weighted("B", 1), weighted("C", 1)).render(5, 20))
     assert len(lines) == 20
-    assert lines[0].strip() == "A"
-    assert lines[6].strip() == "B"
-    assert lines[13].strip() == "C"
+    assert lines[0].startswith("A")
+    assert lines[6].startswith("B")
+    assert lines[13].startswith("C")
 
 
 # ── Table weighted ─────────────────────────────────────────────────
 
 
 def test_table_weighted_columns():
-    a = weighted("A", grow=2)
-    b = weighted("B", grow=1)
-    tbl = table(table_row(a, b), spacing=0)
-    lines = clean(tbl.render(30))
-    # A gets 20, B gets 10
-    assert lines[0][:20].strip() == "A"
-    assert lines[0][20:].strip() == "B"
+    assert vis(table(table_row(weighted("A", 2), weighted("B", 1)), spacing=0).render(30)) == [
+        "A···················B·········",
+    ]
 
 
 def test_table_weighted_with_fixed():
-    fixed = text("XX")  # basis=2
-    a = weighted("A", grow=1)
-    b = weighted("B", grow=3)
-    tbl = table(table_row(fixed, a, b), spacing=0)
-    lines = clean(tbl.render(30))
-    # fixed=2, remaining=28, A=7, B=21
-    assert lines[0][:2] == "XX"
-    assert lines[0][2:9].strip() == "A"
-    assert lines[0][9:].strip() == "B"
+    assert vis(table(table_row(text("XX"), weighted("A", 1), weighted("B", 3)), spacing=0).render(30)) == [
+        "XXA······B····················",
+    ]
 
 
 # ── Protocol ───────────────────────────────────────────────────────
 
 
 def test_default_flex_grow_is_zero():
-    c = text("")
-    assert c.grow == 0
+    assert text("").grow == 0
 
 
 def test_weighted_component_returns_weight():
-    w = weighted("x", grow=3)
-    assert w.grow == 3
+    assert weighted("x", grow=3).grow == 3

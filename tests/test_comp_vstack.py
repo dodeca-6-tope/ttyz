@@ -1,12 +1,9 @@
 """Tests for VStack component."""
 
+from helpers import clean
+
 from terminal import scroll, text, vstack
 from terminal.components.scroll import ScrollState
-from terminal.measure import strip_ansi
-
-
-def clean(lines: list[str]) -> list[str]:
-    return [strip_ansi(l) for l in lines]
 
 
 def test_stacks_children():
@@ -29,24 +26,19 @@ def test_flex_basis():
 
 
 def test_unconstrained_when_no_height():
-    """Without height, render produces as many lines as content needs."""
     v = vstack(text("a"), text("b"), text("c"))
     assert clean(v.render(80)) == ["a", "b", "c"]
     assert clean(v.render(80, None)) == ["a", "b", "c"]
 
 
 def test_constrained_no_growers_ignores_height():
-    """With height but no growers, renders unconstrained."""
-    v = vstack(text("a"), text("b"))
-    assert clean(v.render(80, 10)) == ["a", "b"]
+    assert clean(vstack(text("a"), text("b")).render(80, 10)) == ["a", "b"]
 
 
 def test_constrained_distributes_to_grower():
     s = ScrollState()
     v = vstack(text("header"), scroll(text("a"), text("b"), text("c"), state=s))
-    # height=4: header=1, scroll gets 3
-    result = clean(v.render(80, 4))
-    assert result == ["header", "a", "b", "c"]
+    assert clean(v.render(80, 4)) == ["header", "a", "b", "c"]
 
 
 def test_constrained_multiple_fixed_children():
@@ -54,9 +46,7 @@ def test_constrained_multiple_fixed_children():
     v = vstack(
         text("top"), scroll(text("a"), text("b"), text("c"), state=s), text("bottom")
     )
-    # height=5: top=1, bottom=1, scroll gets 3
-    result = clean(v.render(80, 5))
-    assert result == ["top", "a", "b", "c", "bottom"]
+    assert clean(v.render(80, 5)) == ["top", "a", "b", "c", "bottom"]
 
 
 def test_constrained_with_spacing():
@@ -66,23 +56,17 @@ def test_constrained_with_spacing():
         scroll(text("a"), text("b"), text("c"), text("d"), state=s),
         spacing=1,
     )
-    # height=5: top=1, spacing=1, scroll gets 3
-    result = clean(v.render(80, 5))
-    assert result == ["top", "", "a", "b", "c"]
+    assert clean(v.render(80, 5)) == ["top", "", "a", "b", "c"]
 
 
 def test_constrained_two_growers():
-    from terminal.components.scroll import ScrollState
-
     s1 = ScrollState()
     s2 = ScrollState()
     v = vstack(
         scroll(*[text(str(i)) for i in range(10)], state=s1),
         scroll(*[text(str(i + 10)) for i in range(10)], state=s2),
     )
-    # height=6: each grower gets 3
-    result = clean(v.render(80, 6))
-    assert result == ["0", "1", "2", "10", "11", "12"]
+    assert clean(v.render(80, 6)) == ["0", "1", "2", "10", "11", "12"]
 
 
 def test_constrained_grower_gets_zero_when_fixed_fills():
@@ -93,9 +77,7 @@ def test_constrained_grower_gets_zero_when_fixed_fills():
         text("c"),
         scroll(text("x"), text("y"), state=s),
     )
-    # height=3: fixed children take 3, scroll gets 0
-    result = clean(v.render(80, 3))
-    assert result == ["a", "b", "c"]
+    assert clean(v.render(80, 3)) == ["a", "b", "c"]
 
 
 # ── flex_grow propagation ───────────────────────────────────────────
