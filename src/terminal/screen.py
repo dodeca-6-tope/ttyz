@@ -35,9 +35,9 @@ def _ansi_end(line: str, pos: int) -> int:
     if pos + 1 >= n or line[pos + 1] != "[":
         return pos
     end = pos + 2
-    while end < n and line[end] != "m":
+    while end < n and not ("\x40" <= line[end] <= "\x7e"):
         end += 1
-    return end + 1
+    return end + 1 if end < n else pos
 
 
 def _clip_scan(line: str, width: int, *, pad_to: bool = False) -> str:

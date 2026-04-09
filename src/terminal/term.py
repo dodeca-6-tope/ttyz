@@ -61,6 +61,8 @@ class TTY:
         if self._prev_sigwinch is not None:
             signal.signal(signal.SIGWINCH, self._prev_sigwinch)
             self._prev_sigwinch = None
+        os.close(self._wake_r)
+        os.close(self._wake_w)
 
     def _on_sigwinch(self, signum: int, frame: FrameType | None) -> None:
         self._resized = True

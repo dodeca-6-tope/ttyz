@@ -127,3 +127,11 @@ def test_screen_shrinking_content_clears_old_rows():
     assert "c" not in output
     assert "d" not in output
     assert "e" not in output
+
+
+def test_clip_non_sgr_csi_preserves_visible_text():
+    """Non-SGR CSI sequences (like cursor-move) should not eat visible text."""
+    from terminal.measure import strip_ansi
+
+    result = clip("AB\033[1;1HCD", 4)
+    assert strip_ansi(result) == "ABCD"

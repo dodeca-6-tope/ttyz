@@ -4,7 +4,7 @@ import re
 
 from terminal._buffer import char_width as _cwidth
 
-ANSI_RE = re.compile(r"\033\[[^m]*m")
+ANSI_RE = re.compile(r"\033\[[^@-~]*[@-~]")
 
 
 def strip_ansi(s: str) -> str:

@@ -207,3 +207,35 @@ def test_suspend_resume(term: tuple[Terminal, int]) -> None:
     t.suspend()
     t.resume()
     assert t.active
+
+
+# ── resource cleanup ───────────────────────────────────────────────
+
+
+def _count_fds() -> int:
+    """Count open file descriptors for the current process."""
+    count = 0
+    for fd in range(256):
+        try:
+            os.fstat(fd)
+            count += 1
+        except OSError:
+            pass
+    return count
+
+
+def test_no_fd_leak_after_exit() -> None:
+    """Entering and exiting TTY should not leak file descriptors."""
+    master, slave = pty.openpty()
+    old_stdin = sys.stdin
+    with open(slave, closefd=False) as f:
+        sys.stdin = f
+        before = _count_fds()
+        t = Terminal()
+        with t:
+            pass
+        after = _count_fds()
+    sys.stdin = old_stdin
+    os.close(master)
+    os.close(slave)
+    assert after == before

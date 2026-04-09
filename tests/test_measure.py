@@ -27,6 +27,14 @@ def test_strip_ansi_no_codes():
     assert strip_ansi("hello") == "hello"
 
 
+def test_strip_ansi_non_sgr_csi():
+    assert strip_ansi("AB\033[1;1HCD") == "ABCD"
+
+
+def test_display_width_non_sgr_csi():
+    assert display_width("AB\033[1;1HCD") == 4
+
+
 def test_empty():
     assert display_width("") == 0
     assert strip_ansi("") == ""
