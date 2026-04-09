@@ -40,6 +40,27 @@ def _wrap_line(line: str, width: int) -> list[str]:
     return lines or [""]
 
 
+def _truncate_line(line: str, width: int, mode: str) -> str:
+    """Truncate a line with ellipsis according to the given mode."""
+    stripped = strip_ansi(line)
+    if display_width(stripped) <= width:
+        return line
+    if width <= 0:
+        return ""
+    if mode == "head":
+        return "…" + slice_at_width(stripped[::-1], width - 1)[::-1]
+    if mode == "middle":
+        left_w = (width - 1) // 2
+        right_w = width - 1 - left_w
+        return (
+            slice_at_width(stripped, left_w)
+            + "…"
+            + slice_at_width(stripped[::-1], right_w)[::-1]
+        )
+    # tail (default)
+    return slice_at_width(stripped, width - 1) + "…"
+
+
 class Text:
     """ANSI-aware string that doubles as a display component."""
 
@@ -48,6 +69,7 @@ class Text:
         value: object = "",
         *,
         wrap: bool = False,
+        truncation: str | None = None,
         padding: int = 0,
         padding_left: int | None = None,
         padding_right: int | None = None,
@@ -55,6 +77,7 @@ class Text:
         raw = str(value)
         self._raw = raw
         self._wrap = wrap
+        self._truncation = truncation
         self._lines = raw.splitlines() or [""]
         self._visible = max((display_width(l) for l in self._lines), default=0)
         self._pad_left = padding if padding_left is None else padding_left
@@ -99,6 +122,8 @@ class Text:
         for line in self._lines:
             if self._wrap and inner > 0:
                 chunks.extend(_wrap_line(line, inner))
+            elif self._truncation and inner > 0:
+                chunks.append(_truncate_line(line, inner, self._truncation))
             else:
                 chunks.append(line)
         return [f"{pad}{c}{pad_r}" for c in chunks]
@@ -108,6 +133,7 @@ def text(
     value: object = "",
     *,
     wrap: bool = False,
+    truncation: str | None = None,
     padding: int = 0,
     padding_left: int | None = None,
     padding_right: int | None = None,
@@ -120,6 +146,7 @@ def text(
     t = Text(
         value,
         wrap=wrap,
+        truncation=truncation,
         padding=padding,
         padding_left=padding_left,
         padding_right=padding_right,

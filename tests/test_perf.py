@@ -230,7 +230,7 @@ def test_realistic_frame():
             items,
             lambda item, sel: hstack(
                 text("▸ " if sel else "  "),
-                text(f"Item {item.key}", grow=1, overflow="ellipsis"),
+                text(f"Item {item.key}", grow=1, truncation="tail"),
                 text("✓" if item.key % 3 == 0 else " "),
             ),
         )

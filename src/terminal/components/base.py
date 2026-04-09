@@ -39,18 +39,13 @@ class Renderable:
         return _resolve(self.height, parent, 1)
 
 
-_OVERFLOW = {"visible", "hidden", "ellipsis"}
+_OVERFLOW = {"visible", "hidden"}
 
 
-def _clip_overflow(lines: list[str], width: int, overflow: str) -> list[str]:
-    """Clip lines to width using the given overflow mode."""
-    from terminal.measure import display_width
-    from terminal.screen import clip, clip_and_pad
+def _clip_overflow(lines: list[str], width: int) -> list[str]:
+    """Clip lines to width."""
+    from terminal.screen import clip_and_pad
 
-    if overflow == "ellipsis":
-        lines = [
-            clip(l, width - 1) + "…" if display_width(l) > width else l for l in lines
-        ]
     return [clip_and_pad(l, width) for l in lines]
 
 
@@ -95,7 +90,7 @@ def frame(
         ch = min(rh, h) if rh is not None and h is not None else (rh or h)
         lines = child.render(cw, ch)
         if rw is not None and clips:
-            lines = _clip_overflow(lines, cw, overflow)
+            lines = _clip_overflow(lines, cw)
         if rh is not None:
             lines = _fit_height(lines, rh, clips)
         if bg is not None:

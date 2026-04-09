@@ -12,8 +12,8 @@ from terminal.components.input import (
 from terminal.components.keyed import Keyed
 from terminal.components.list import ListState, list
 from terminal.components.scroll import ScrollState, scroll
-from terminal.components.spacer import spacer
 from terminal.components.scrollbar import scrollbar, scrollbar_default
+from terminal.components.spacer import spacer
 from terminal.components.table import TableRow, table, table_row
 from terminal.components.text import Text, text
 from terminal.components.toast import Message, ToastState

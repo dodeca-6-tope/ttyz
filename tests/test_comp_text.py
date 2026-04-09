@@ -200,6 +200,38 @@ def test_truncate_wide_chars_no_op():
     assert truncate("你好", 4) == "你好"
 
 
+# ── Truncation mode ──────────────────────────────────────────────────
+
+
+def test_truncation_tail():
+    assert clean(text("hello world", truncation="tail").render(8)) == ["hello w…"]
+
+
+def test_truncation_head():
+    assert clean(text("hello world", truncation="head").render(8)) == ["…o world"]
+
+
+def test_truncation_middle():
+    assert clean(text("hello world", truncation="middle").render(8)) == ["hel…orld"]
+
+
+def test_truncation_no_op_when_fits():
+    assert clean(text("hi", truncation="tail").render(80)) == ["hi"]
+
+
+def test_truncation_inside_box():
+    from terminal import box
+
+    def vis(lines: list[str]) -> list[str]:
+        return [strip_ansi(l).replace(" ", "·") for l in lines]
+
+    assert vis(box(text("a long line of text", truncation="tail")).render(10)) == [
+        "╭────────╮",
+        "│a·long·…│",
+        "╰────────╯",
+    ]
+
+
 # ── Concatenation ────────────────────────────────────────────────────
 
 
