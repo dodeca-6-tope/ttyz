@@ -98,7 +98,7 @@ def test_display_width_wide_throughput():
     """display_width on 10k strings with ANSI + wide chars."""
     strings = [f"\033[31m{'你好' * 20}abc\033[0m"] * 10_000
     elapsed = _timed(lambda: [display_width(s) for s in strings])
-    assert elapsed < 0.5, f"display_width wide 10k took {elapsed:.3f}s"
+    assert elapsed < 0.12, f"display_width wide 10k took {elapsed:.3f}s"
 
 
 def test_display_width_ascii_throughput():
@@ -108,18 +108,18 @@ def test_display_width_ascii_throughput():
     assert elapsed < 0.04, f"display_width ASCII 100k took {elapsed:.3f}s"
 
 
-# ── render_diff ─────────────────────────────────────────────────────
+# ── cell buffer: speed ─────────────────────────────────────────────
 
 
 def test_diff_identical_frames():
-    """Diffing two identical cell buffers should be fast."""
+    """Diffing two identical cell buffers — memcmp early-out."""
     a = Buffer(WIDTH, HEIGHT)
     b = Buffer(WIDTH, HEIGHT)
     for i in range(HEIGHT):
         parse_line(a, i, "x" * WIDTH)
         parse_line(b, i, "x" * WIDTH)
     elapsed = _timed(lambda: render_diff(a, b), iterations=1000)
-    assert elapsed < 1.0, f"diff identical 1k took {elapsed:.3f}s"
+    assert elapsed < 0.02, f"diff identical 1k took {elapsed:.3f}s"
 
 
 def test_diff_fully_changed():
@@ -130,7 +130,7 @@ def test_diff_fully_changed():
         parse_line(old, i, "a" * WIDTH)
         parse_line(new, i, "b" * WIDTH)
     elapsed = _timed(lambda: render_diff(new, old), iterations=100)
-    assert elapsed < 1.0, f"diff changed 100 took {elapsed:.3f}s"
+    assert elapsed < 0.04, f"diff changed 100 took {elapsed:.3f}s"
 
 
 def test_parse_line_ascii_throughput():
@@ -143,7 +143,7 @@ def test_parse_line_ascii_throughput():
             parse_line(buf, i, l)
 
     elapsed = _timed(run, iterations=1000)
-    assert elapsed < 2.0, f"parse ASCII 1k frames took {elapsed:.3f}s"
+    assert elapsed < 0.04, f"parse ASCII 1k frames took {elapsed:.3f}s"
 
 
 def test_parse_line_ansi_throughput():
@@ -156,7 +156,45 @@ def test_parse_line_ansi_throughput():
             parse_line(buf, i, l)
 
     elapsed = _timed(run, iterations=1000)
-    assert elapsed < 5.0, f"parse ANSI 1k frames took {elapsed:.3f}s"
+    assert elapsed < 0.1, f"parse ANSI 1k frames took {elapsed:.3f}s"
+
+
+# ── cell buffer: output size ──────────────────────────────────────
+
+
+def test_diff_identical_emits_nothing():
+    """Identical frames must produce zero output bytes."""
+    a = Buffer(WIDTH, HEIGHT)
+    b = Buffer(WIDTH, HEIGHT)
+    for i in range(HEIGHT):
+        parse_line(a, i, "x" * WIDTH)
+        parse_line(b, i, "x" * WIDTH)
+    assert render_diff(a, b) == ""
+
+
+def test_diff_single_cell_output_is_small():
+    """Changing one cell should emit far less than a full line."""
+    a = Buffer(WIDTH, HEIGHT)
+    b = Buffer(WIDTH, HEIGHT)
+    for i in range(HEIGHT):
+        parse_line(a, i, "x" * WIDTH)
+        parse_line(b, i, "x" * WIDTH)
+    parse_line(b, 0, "y" + "x" * (WIDTH - 1))
+    out = render_diff(b, a)
+    assert len(out) < 20, f"single cell diff was {len(out)} bytes"
+
+
+def test_diff_one_line_output_bounded():
+    """Changing one full line should emit roughly one line of output."""
+    a = Buffer(WIDTH, HEIGHT)
+    b = Buffer(WIDTH, HEIGHT)
+    for i in range(HEIGHT):
+        parse_line(a, i, "x" * WIDTH)
+        parse_line(b, i, "x" * WIDTH)
+    parse_line(b, 0, "z" * WIDTH)
+    out = render_diff(b, a)
+    # Should be roughly WIDTH + cursor move, not the whole screen
+    assert len(out) < WIDTH + 50, f"one-line diff was {len(out)} bytes"
 
 
 # ── Full component render ──────────────────────────────────────────
@@ -167,7 +205,7 @@ def test_large_vstack():
     children = [text(f"line {i}") for i in range(1000)]
     tree = vstack(*children)
     elapsed = _timed(lambda: tree.render(WIDTH, HEIGHT), iterations=100)
-    assert elapsed < 0.2, f"vstack 1000 x100 took {elapsed:.3f}s"
+    assert elapsed < 0.15, f"vstack 1000 x100 took {elapsed:.3f}s"
 
 
 def test_large_list():
@@ -179,7 +217,7 @@ def test_large_list():
         ),
         iterations=10,
     )
-    assert elapsed < 0.5, f"list 10k x10 took {elapsed:.3f}s"
+    assert elapsed < 0.01, f"list 10k x10 took {elapsed:.3f}s"
 
 
 def test_wide_table():
@@ -209,7 +247,7 @@ def test_nested_hstack():
 
     tree = build(5)
     elapsed = _timed(lambda: tree.render(WIDTH), iterations=10)
-    assert elapsed < 0.5, f"nested hstack x10 took {elapsed:.3f}s"
+    assert elapsed < 0.15, f"nested hstack x10 took {elapsed:.3f}s"
 
 
 # ── ZStack ──────────────────────────────────────────────────────────
@@ -230,7 +268,7 @@ def test_zstack_wide_chars():
     overlay = text("ALERT")
     tree = zstack(base, overlay, justify_content="center", align_items="center")
     elapsed = _timed(lambda: tree.render(WIDTH, HEIGHT), iterations=100)
-    assert elapsed < 0.5, f"zstack wide x100 took {elapsed:.3f}s"
+    assert elapsed < 0.3, f"zstack wide x100 took {elapsed:.3f}s"
 
 
 # ── Scroll ──────────────────────────────────────────────────────────
@@ -276,4 +314,4 @@ def test_realistic_frame():
         return vstack(header, body, footer, spacing=1)
 
     elapsed = _timed(lambda: build().render(WIDTH, HEIGHT), iterations=100)
-    assert elapsed < 0.5, f"realistic frame x100 took {elapsed:.3f}s"
+    assert elapsed < 0.2, f"realistic frame x100 took {elapsed:.3f}s"
