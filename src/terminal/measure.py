@@ -2,7 +2,7 @@
 
 import re
 
-from wcwidth import wcwidth
+from terminal._buffer import char_width as _cwidth
 
 ANSI_RE = re.compile(r"\033\[[^m]*m")
 
@@ -15,8 +15,7 @@ def strip_ansi(s: str) -> str:
 
 def char_width(ch: str) -> int:
     """Display width of a single character."""
-    w = wcwidth(ch)
-    return w if w >= 0 else 0
+    return _cwidth(ch)
 
 
 def display_width(s: str) -> int:
@@ -26,10 +25,10 @@ def display_width(s: str) -> int:
 
 
 def _width_plain(s: str) -> int:
-    """Width of a string with no ANSI codes — single-pass wcwidth."""
+    """Width of a string with no ANSI codes — single-pass."""
     w = 0
     for ch in s:
-        cw = wcwidth(ch)
+        cw = _cwidth(ch)
         if cw > 0:
             w += cw
     return w

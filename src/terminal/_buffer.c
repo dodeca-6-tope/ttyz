@@ -165,27 +165,24 @@ static void parse_sgr(const void *data, int kind,
     }
 }
 
-/* ── char width (calls Python wcwidth package) ────────────────────── */
+/* ── char width (system wcwidth) ──────────────────────────────────── */
 
-static PyObject *py_wcwidth_fn = NULL;  /* cached reference to wcwidth.wcwidth */
-
-static int init_wcwidth(void) {
-    PyObject *mod = PyImport_ImportModule("wcwidth");
-    if (!mod) return -1;
-    py_wcwidth_fn = PyObject_GetAttrString(mod, "wcwidth");
-    Py_DECREF(mod);
-    return py_wcwidth_fn ? 0 : -1;
-}
+#include <wchar.h>
 
 static inline int cwidth(Py_UCS4 ch) {
     if (ch >= 0x20 && ch < 0x7F) return 1;  /* ASCII printable */
     if (ch < 0x80) return 0;                 /* ASCII control */
-    /* Call Python wcwidth for non-ASCII (CJK, emoji, etc.) */
-    PyObject *result = PyObject_CallFunction(py_wcwidth_fn, "C", ch);
-    if (!result) { PyErr_Clear(); return 0; }
-    int w = (int)PyLong_AsLong(result);
-    Py_DECREF(result);
+    int w = wcwidth((wchar_t)ch);
     return w > 0 ? w : 0;
+}
+
+static PyObject *mod_char_width(PyObject *self, PyObject *arg) {
+    if (!PyUnicode_Check(arg) || PyUnicode_GET_LENGTH(arg) != 1) {
+        PyErr_SetString(PyExc_TypeError, "expected a single character");
+        return NULL;
+    }
+    Py_UCS4 ch = PyUnicode_READ_CHAR(arg, 0);
+    return PyLong_FromLong(cwidth(ch));
 }
 
 /* ── Buffer type ───────────────────────────────────────────────────── */
@@ -467,6 +464,7 @@ static PyMethodDef module_methods[] = {
     {"parse_line",  mod_parse_line,  METH_VARARGS, "Parse ANSI line into buffer row."},
     {"render_full", mod_render_full, METH_VARARGS, "Render entire buffer to ANSI."},
     {"render_diff", mod_render_diff, METH_VARARGS, "Render cell-level diff to ANSI."},
+    {"char_width",  mod_char_width,  METH_O,       "Display width of a single character."},
     {NULL}
 };
 
@@ -493,11 +491,6 @@ PyMODINIT_FUNC PyInit__buffer(void) {
     }
 
     if (PyModule_AddIntConstant(m, "EMPTY", STYLE_EMPTY) < 0) {
-        Py_DECREF(m);
-        return NULL;
-    }
-
-    if (init_wcwidth() < 0) {
         Py_DECREF(m);
         return NULL;
     }
