@@ -199,3 +199,15 @@ def test_hstack_in_vstack_scroll_gets_remaining_height():
     assert s.height == 10
     assert vis([lines[0]]) == ["header"]
     assert vis([lines[11]]) == ["footer"]
+
+
+def test_bg_fills_flex_allocated_height():
+    from helpers import clean
+    from terminal import spacer
+
+    v = vstack(
+        hstack(text(""), grow=1, bg=1),
+        spacer(),
+        bg=2,
+    )
+    assert len(clean(v.render(10, 10))) == 10

@@ -89,3 +89,17 @@ def test_grow_not_propagated_from_children():
 
 def test_flex_grow_false_without_growers():
     assert not vstack(text("a"), text("b")).grow
+
+
+# ── bg fills parent-allocated height ───────────────────────────────
+
+
+def test_bg_fills_flex_allocated_height():
+    from terminal import spacer
+
+    v = vstack(
+        vstack(text(""), grow=1, bg=1),
+        spacer(),
+        bg=2,
+    )
+    assert len(clean(v.render(10, 10))) == 10

@@ -99,6 +99,8 @@ def frame(
         if rh is not None:
             lines = _fit_height(lines, rh, clips)
         if bg is not None:
+            if ch is not None and len(lines) < ch:
+                lines = lines + [""] * (ch - len(lines))
             lines = _apply_bg(lines, bg, cw)
         return lines
 
