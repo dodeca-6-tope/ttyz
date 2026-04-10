@@ -23,14 +23,14 @@ _EXIT = "\033[?1006l\033[?1000l\033[?1004l\033[?2004l\033[?7h\033[?25h\033[?1049
 class TTY:
     """Context manager for full-screen terminal UI sessions."""
 
-    def __init__(self) -> None:
+    def __init__(self, screen: Screen | None = None) -> None:
         self._fd: int | None = None
         self._saved: list[Any] | None = None
         self._active = False
         self._resized = False
         self._prev_sigwinch: Callable[[int, FrameType | None], Any] | int | None = None
         self._keys: KeyReader | None = None
-        self._screen = Screen()
+        self._screen = screen or Screen()
         self._wake_r, self._wake_w = os.pipe()
         atexit.register(self.cleanup)
 

@@ -240,6 +240,4 @@ def test_hstack_join_row_ansi_ascii_width_agree():
     ansi_result = hstack_join_row(["\033[1mhello world\033[0m"], [5], 0)
     ascii_w = display_width(strip_ansi(ascii_result))
     ansi_w = display_width(strip_ansi(ansi_result))
-    assert ascii_w == ansi_w, (
-        f"ASCII path width={ascii_w}, ANSI path width={ansi_w}"
-    )
+    assert ascii_w == ansi_w, f"ASCII path width={ascii_w}, ANSI path width={ansi_w}"

@@ -22,7 +22,7 @@ dev = [
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "strict"
-exclude = ["examples", ".venv"]
+exclude = ["examples", ".venv", "setup.py"]
 
 [tool.ruff]
 line-length = 88

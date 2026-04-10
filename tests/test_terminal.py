@@ -28,8 +28,7 @@ def test_draw_writes_content() -> None:
 
     chunks: list[str] = []
     screen = Screen(write=lambda data: chunks.append(data.decode()), flush=lambda: None)
-    t = Terminal()
-    t._screen = screen
+    t = Terminal(screen=screen)
     size = terminal_size((40, 10))
     with patch("terminal.screen.os.get_terminal_size", return_value=size):
         t.draw(["hello", "world"])
