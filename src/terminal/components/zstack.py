@@ -76,6 +76,24 @@ def _stamp(base: str, col: int, line: str, width: int) -> str:
     return left + "\033[0m" + line + "\033[0m" + restore + right
 
 
+def _layer_bounds(
+    child: Renderable,
+    layer: list[str],
+    w: int,
+    canvas_h: int,
+    justify_content: str,
+    align_items: str,
+) -> tuple[int, int, int, int]:
+    """Compute (row_offset, col_offset, start, end) for a layer."""
+    rendered_w = max((display_width(l) for l in layer), default=0)
+    layer_w = child.resolve_width(w) or rendered_w
+    layer_h = child.resolve_height(canvas_h) or len(layer)
+    row_off, col_off = _offsets(
+        justify_content, align_items, (w, canvas_h), (layer_w, layer_h)
+    )
+    return row_off, col_off, max(0, -row_off), min(len(layer), canvas_h - row_off)
+
+
 def zstack(
     *children: Renderable,
     justify_content: str = "start",
@@ -90,28 +108,20 @@ def zstack(
         raise ValueError(f"unknown justify_content {justify_content!r}")
     if align_items not in _ALIGNMENTS:
         raise ValueError(f"unknown align_items {align_items!r}")
-    children_list = list(children)
+    children = children
 
-    basis = max((c.flex_basis for c in children_list), default=0)
+    basis = max((c.flex_basis for c in children), default=0)
 
     def render(w: int, h: int | None = None) -> list[str]:
-        if not children_list:
+        if not children:
             return [""] * h if h else [""]
-        layers = [c.render(w, h) for c in children_list]
+        layers = [c.render(w, h) for c in children]
         canvas_h = h if h is not None else len(layers[0])
         canvas = [" " * w for _ in range(canvas_h)]
-        for child, layer in zip(children_list, layers):
-            rendered_w = max((display_width(l) for l in layer), default=0)
-            layer_w = child.resolve_width(w) or rendered_w
-            layer_h = child.resolve_height(canvas_h) or len(layer)
-            row_off, col_off = _offsets(
-                justify_content,
-                align_items,
-                (w, canvas_h),
-                (layer_w, layer_h),
+        for child, layer in zip(children, layers):
+            row_off, col_off, start, end = _layer_bounds(
+                child, layer, w, canvas_h, justify_content, align_items
             )
-            start = max(0, -row_off)
-            end = min(len(layer), canvas_h - row_off)
             for i in range(start, end):
                 canvas[row_off + i] = _stamp(canvas[row_off + i], col_off, layer[i], w)
         return canvas

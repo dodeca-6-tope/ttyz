@@ -3,32 +3,23 @@
 import re
 from functools import lru_cache
 
-from terminal._buffer import char_width as _cwidth
-from terminal._buffer import display_width as _c_display_width
+from terminal.buffer import c_display_width, char_width  # noqa: F401 — re-exported
 
 ANSI_RE = re.compile(r"\033\[[^@-~]*[@-~]")
 
-
-@lru_cache(maxsize=4096)
-def _cached_display_width(s: str) -> int:
-    return _c_display_width(s)
+_cached = lru_cache(maxsize=4096)(c_display_width)
 
 
 def display_width(s: str) -> int:
     if len(s) < 512:
-        return _cached_display_width(s)
-    return _c_display_width(s)
+        return _cached(s)
+    return c_display_width(s)
 
 
 def strip_ansi(s: str) -> str:
     if "\033" not in s:
         return s
     return ANSI_RE.sub("", s)
-
-
-def char_width(ch: str) -> int:
-    """Display width of a single character."""
-    return _cwidth(ch)
 
 
 def distribute(total: int, weights: list[int]) -> list[int]:

@@ -260,7 +260,7 @@ static PyMemberDef Buffer_members[] = {
 
 static PyTypeObject BufferType = {
     .ob_base      = PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name      = "terminal._buffer.Buffer",
+    .tp_name      = "terminal.cbuf.Buffer",
     .tp_basicsize = sizeof(BufferObject),
     .tp_flags     = Py_TPFLAGS_DEFAULT,
     .tp_new       = PyType_GenericNew,
@@ -507,6 +507,201 @@ static PyObject *mod_display_width(PyObject *self, PyObject *arg) {
     return PyLong_FromLong(width);
 }
 
+/* ── render_flat_line ─────────────────────────────────────────────── */
+/*
+ * render_flat_line(items) -> str
+ *
+ * items: list of (offset: int, col_width: int, content: str)
+ * Builds a single line by placing each content at its offset, padded to
+ * col_width.  Gaps between items are filled with spaces.
+ */
+static PyObject *mod_render_flat_line(PyObject *self, PyObject *arg) {
+    if (!PyList_Check(arg)) {
+        PyErr_SetString(PyExc_TypeError, "expected a list");
+        return NULL;
+    }
+
+    Py_ssize_t n = PyList_GET_SIZE(arg);
+    if (n == 0) return PyUnicode_FromString("");
+
+    /* First pass: compute total output width from last item. */
+    PyObject *last = PyList_GET_ITEM(arg, n - 1);
+    long last_off, last_cw;
+    {
+        PyObject *py_off = PyTuple_GET_ITEM(last, 0);
+        PyObject *py_cw  = PyTuple_GET_ITEM(last, 1);
+        last_off = PyLong_AsLong(py_off);
+        last_cw  = PyLong_AsLong(py_cw);
+    }
+    Py_ssize_t total = last_off + last_cw;
+
+    /* Allocate UCS-1 (ASCII) buffer filled with spaces. */
+    PyObject *out = PyUnicode_New(total, 127);
+    if (!out) return NULL;
+    Py_UCS1 *buf = PyUnicode_1BYTE_DATA(out);
+    memset(buf, ' ', total);
+
+    /* Place each item. */
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *tup = PyList_GET_ITEM(arg, i);
+        long off = PyLong_AsLong(PyTuple_GET_ITEM(tup, 0));
+        /* col_width unused — we already allocated total */
+        PyObject *content = PyTuple_GET_ITEM(tup, 2);
+
+        if (!PyUnicode_Check(content)) continue;
+        Py_ssize_t clen = PyUnicode_GET_LENGTH(content);
+        if (clen == 0) continue;
+
+        /* ASCII content with no ANSI escapes: copy bytes directly.
+           Content may be shorter than col_width — the buffer is
+           pre-filled with spaces so padding is automatic. */
+        if (PyUnicode_IS_ASCII(content) &&
+            PyUnicode_FindChar(content, 0x1B, 0, clen, 1) < 0) {
+            const Py_UCS1 *src = PyUnicode_1BYTE_DATA(content);
+            Py_ssize_t copy = clen;
+            if (off + copy > total) copy = total - off;
+            if (copy > 0 && off >= 0)
+                memcpy(buf + off, src, copy);
+        } else {
+            /* Non-ASCII or ANSI content: fall back to Python. */
+            Py_DECREF(out);
+            Py_RETURN_NONE;
+        }
+    }
+
+    return out;
+}
+
+/* ── hstack_join_row ─────────────────────────────────────────────── */
+/*
+ * hstack_join_row(cells, col_widths, spacing) -> str
+ *
+ * cells:      list[str]  — rendered content for each column
+ * col_widths: list[int]  — target width for each column
+ * spacing:    int        — gap between columns
+ *
+ * For each cell: pad content to col_width with spaces, join with spacing.
+ * ANSI-aware: skips escape sequences when measuring content width.
+ */
+static PyObject *mod_hstack_join_row(PyObject *self, PyObject *args) {
+    PyObject *cells, *widths;
+    int spacing;
+    if (!PyArg_ParseTuple(args, "OOi", &cells, &widths, &spacing))
+        return NULL;
+
+    Py_ssize_t n = PyList_GET_SIZE(cells);
+    if (n == 0) return PyUnicode_FromString("");
+
+    /* Compute total output length. */
+    Py_ssize_t total = 0;
+    for (Py_ssize_t i = 0; i < n; i++) {
+        total += PyLong_AsLong(PyList_GET_ITEM(widths, i));
+        if (i > 0) total += spacing;
+    }
+
+    /* Pre-scan: if ALL cells are ASCII with no ANSI, use fast memcpy path. */
+    int all_ascii = 1;
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *cell = PyList_GET_ITEM(cells, i);
+        if (!PyUnicode_IS_ASCII(cell) ||
+            PyUnicode_FindChar(cell, 0x1B, 0, PyUnicode_GET_LENGTH(cell), 1) >= 0) {
+            all_ascii = 0;
+            break;
+        }
+    }
+
+    if (all_ascii) {
+        PyObject *out = PyUnicode_New(total, 127);
+        if (!out) return NULL;
+        Py_UCS1 *buf = PyUnicode_1BYTE_DATA(out);
+        memset(buf, ' ', total);
+
+        Py_ssize_t pos = 0;
+        for (Py_ssize_t i = 0; i < n; i++) {
+            if (i > 0) pos += spacing;  /* spacing already spaces via memset */
+            long cw = PyLong_AsLong(PyList_GET_ITEM(widths, i));
+            PyObject *cell = PyList_GET_ITEM(cells, i);
+            Py_ssize_t clen = PyUnicode_GET_LENGTH(cell);
+            Py_ssize_t copy = clen < cw ? clen : cw;
+            memcpy(buf + pos, PyUnicode_1BYTE_DATA(cell), copy);
+            pos += cw;
+        }
+        return out;
+    }
+
+    /* ANSI path: build with Python string ops. */
+    /* Measure display width of each cell, then pad. */
+    OutBuf ob;
+    if (outbuf_init(&ob, total * 2) < 0)
+        return PyErr_NoMemory();
+
+    for (Py_ssize_t i = 0; i < n; i++) {
+        if (i > 0) {
+            for (int s = 0; s < spacing; s++)
+                outbuf_add(&ob, " ", 1);
+        }
+        long cw = PyLong_AsLong(PyList_GET_ITEM(widths, i));
+        PyObject *cell = PyList_GET_ITEM(cells, i);
+
+        /* Copy cell content. */
+        Py_ssize_t clen = PyUnicode_GET_LENGTH(cell);
+        int kind = PyUnicode_KIND(cell);
+        const void *data = PyUnicode_DATA(cell);
+
+        /* Compute display width while copying. */
+        int vis = 0;
+        for (Py_ssize_t j = 0; j < clen; j++) {
+            Py_UCS4 ch = PyUnicode_READ(kind, data, j);
+            char utf8[4];
+            int blen;
+            if (ch < 0x80) {
+                utf8[0] = (char)ch;
+                blen = 1;
+            } else if (ch < 0x800) {
+                utf8[0] = 0xC0 | (ch >> 6);
+                utf8[1] = 0x80 | (ch & 0x3F);
+                blen = 2;
+            } else if (ch < 0x10000) {
+                utf8[0] = 0xE0 | (ch >> 12);
+                utf8[1] = 0x80 | ((ch >> 6) & 0x3F);
+                utf8[2] = 0x80 | (ch & 0x3F);
+                blen = 3;
+            } else {
+                utf8[0] = 0xF0 | (ch >> 18);
+                utf8[1] = 0x80 | ((ch >> 12) & 0x3F);
+                utf8[2] = 0x80 | ((ch >> 6) & 0x3F);
+                utf8[3] = 0x80 | (ch & 0x3F);
+                blen = 4;
+            }
+            outbuf_add(&ob, utf8, blen);
+
+            /* Track visible width (skip ANSI escapes). */
+            if (ch == 0x1B && j + 1 < clen &&
+                PyUnicode_READ(kind, data, j + 1) == '[') {
+                /* CSI sequence: ESC [ params final_byte */
+                j++;  /* skip '[' */
+                utf8[0] = '['; outbuf_add(&ob, utf8, 1);
+                j++;
+                while (j < clen) {
+                    Py_UCS4 fb = PyUnicode_READ(kind, data, j);
+                    utf8[0] = (char)fb; outbuf_add(&ob, utf8, 1);
+                    if (fb >= 0x40 && fb <= 0x7E) break;
+                    j++;
+                }
+            } else if (ch != 0x1B) {
+                vis += cwidth(ch);
+            }
+        }
+
+        /* Pad to column width. */
+        int gap = (int)cw - vis;
+        for (int g = 0; g < gap; g++)
+            outbuf_add(&ob, " ", 1);
+    }
+
+    return outbuf_to_pystr(&ob);
+}
+
 /* ── Module definition ─────────────────────────────────────────────── */
 
 static PyMethodDef module_methods[] = {
@@ -515,18 +710,20 @@ static PyMethodDef module_methods[] = {
     {"render_diff", mod_render_diff, METH_VARARGS, "Render cell-level diff to ANSI."},
     {"char_width",     mod_char_width,     METH_O,       "Display width of a single character."},
     {"display_width",  mod_display_width,  METH_O,       "Display width of a string (ANSI-aware)."},
+    {"render_flat_line", mod_render_flat_line, METH_O,    "Render flat layout items into a single line."},
+    {"hstack_join_row",  mod_hstack_join_row,  METH_VARARGS, "Join cells with padding and spacing."},
     {NULL}
 };
 
 static struct PyModuleDef module_def = {
     PyModuleDef_HEAD_INIT,
-    .m_name    = "terminal._buffer",
+    .m_name    = "terminal.cbuf",
     .m_doc     = "C-accelerated cell buffer for terminal rendering.",
     .m_size    = -1,
     .m_methods = module_methods,
 };
 
-PyMODINIT_FUNC PyInit__buffer(void) {
+PyMODINIT_FUNC PyInit_cbuf(void) {
     if (PyType_Ready(&BufferType) < 0)
         return NULL;
 

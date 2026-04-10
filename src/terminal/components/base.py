@@ -17,18 +17,27 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
 
 RenderFn = Callable[..., list[str]]
 
 
-@dataclass
 class Renderable:
-    render: RenderFn
-    flex_basis: int = 0
-    grow: int = 0
-    width: str | None = None
-    height: str | None = None
+    # __slots__ over dataclass: avoids __dict__ + descriptor overhead on a hot object.
+    __slots__ = ("render", "flex_basis", "grow", "width", "height")
+
+    def __init__(
+        self,
+        render: RenderFn,
+        flex_basis: int = 0,
+        grow: int = 0,
+        width: str | None = None,
+        height: str | None = None,
+    ) -> None:
+        self.render = render
+        self.flex_basis = flex_basis
+        self.grow = grow
+        self.width = width
+        self.height = height
 
     def resolve_width(self, parent: int) -> int | None:
         """Resolve width spec against *parent* width. None if unspecified."""
@@ -69,14 +78,10 @@ def frame(
     """Wrap *child* with size constraints and/or background."""
     if overflow not in _OVERFLOW:
         raise ValueError(f"unknown overflow {overflow!r}")
-    if (
-        width is None
-        and height is None
-        and grow is None
-        and bg is None
-        and overflow == "visible"
-    ):
-        return child
+    if width is None and height is None and bg is None and overflow == "visible":
+        if grow is None:
+            return child
+        return Renderable(child.render, child.flex_basis, grow)
 
     fw = _fixed(width)
     basis = fw if fw is not None else child.flex_basis

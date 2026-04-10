@@ -20,11 +20,11 @@ def clip_and_pad(line: str, width: int) -> str:
     return _clip_scan(line, width, pad_to=True)
 
 
-def clip(line: str, max_width: int) -> str:
-    """Clip a line to max_width visible characters, preserving ANSI escapes."""
+def clip(line: str, width: int) -> str:
+    """Clip a line to width visible characters, preserving ANSI escapes."""
     if "\033" not in line and line.isascii():
-        return line[:max_width] if len(line) > max_width else line
-    return _clip_scan(line, max_width)
+        return line[:width]
+    return _clip_scan(line, width)
 
 
 def _ansi_end(line: str, pos: int) -> int:

@@ -36,22 +36,21 @@ def _measure_columns(rows: list[TableRow]) -> tuple[list[int], dict[int, int]]:
 
 
 def _resolve_widths(
-    col_widths: list[int], grow_cols: dict[int, int], spacing: int, width: int
+    base_widths: list[int], grow_cols: dict[int, int], spacing: int, width: int
 ) -> list[int]:
-    """Return col_widths with grow columns distributed."""
-    col_widths = list(col_widths)
-    if grow_cols:
-        gap_total = spacing * max(0, len(col_widths) - 1)
-        fixed = (
-            sum(w for ci, w in enumerate(col_widths) if ci not in grow_cols) + gap_total
-        )
-        remaining = max(0, width - fixed)
-        sorted_growers = sorted(grow_cols.items())
-        for (ci, _), w in zip(
-            sorted_growers, distribute(remaining, [w for _, w in sorted_growers])
-        ):
-            col_widths[ci] = w
-    return col_widths
+    """Return column widths with grow columns distributed."""
+    if not grow_cols:
+        return list(base_widths)
+    result = list(base_widths)
+    gap_total = spacing * max(0, len(result) - 1)
+    fixed = sum(w for ci, w in enumerate(result) if ci not in grow_cols) + gap_total
+    remaining = max(0, width - fixed)
+    sorted_growers = sorted(grow_cols.items())
+    for (ci, _), w in zip(
+        sorted_growers, distribute(remaining, [w for _, w in sorted_growers])
+    ):
+        result[ci] = w
+    return result
 
 
 def _render_row(row: TableRow, col_widths: list[int], sep: str) -> str:
@@ -94,6 +93,7 @@ def table(
         if not resolved:
             return [""]
         sep = " " * spacing
-        return [_render_row(row, resolved, sep) for row in rows_list]
+        visible = rows_list if h is None else rows_list[:h]
+        return [_render_row(row, resolved, sep) for row in visible]
 
     return frame(Renderable(render, basis, r_grow), width, height, grow, bg, overflow)

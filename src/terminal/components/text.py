@@ -62,35 +62,14 @@ def _truncate_line(line: str, width: int, mode: str) -> str:
 
 
 class Text:
-    """ANSI-aware string that doubles as a display component."""
+    """ANSI-aware string helper — measures visible width, supports padding."""
 
-    def __init__(
-        self,
-        value: object = "",
-        *,
-        wrap: bool = False,
-        truncation: str | None = None,
-        padding: int = 0,
-        padding_left: int | None = None,
-        padding_right: int | None = None,
-    ) -> None:
+    __slots__ = ("_raw", "_visible")
+
+    def __init__(self, value: object = "") -> None:
         raw = str(value)
         self._raw = raw
-        self._wrap = wrap
-        self._truncation = truncation
-        self._lines = raw.splitlines() or [""]
-        lines = self._lines
-        if len(lines) == 1:
-            self._visible = display_width(lines[0])
-        else:
-            w = 0
-            for l in lines:
-                lw = display_width(l)
-                if lw > w:
-                    w = lw
-            self._visible = w
-        self._pad_left = padding if padding_left is None else padding_left
-        self._pad_right = padding if padding_right is None else padding_right
+        self._visible = display_width(raw)  # C display_width already skips ANSI
 
     def __len__(self) -> int:
         return self._visible
@@ -119,23 +98,14 @@ class Text:
             return Text(self._raw + spaces)
         return Text(spaces + self._raw)
 
-    def flex_basis(self) -> int:
-        return self._visible + self._pad_left + self._pad_right
 
-    def render(self, width: int, height: int | None = None) -> list[str]:
-        inner = width - self._pad_left - self._pad_right
-        pad = " " * self._pad_left
-        pad_r = " " * self._pad_right
-
-        chunks: list[str] = []
-        for line in self._lines:
-            if self._wrap and inner > 0:
-                chunks.extend(_wrap_line(line, inner))
-            elif self._truncation and inner > 0:
-                chunks.append(_truncate_line(line, inner, self._truncation))
-            else:
-                chunks.append(line)
-        return [f"{pad}{c}{pad_r}" for c in chunks]
+def _parse_lines(value: object) -> tuple[list[str], int]:
+    """Parse value into lines and compute the max display width."""
+    raw = value if isinstance(value, str) else str(value)
+    if "\n" not in raw:
+        return [raw], display_width(raw)
+    lines = raw.splitlines() or [""]
+    return lines, max(display_width(l) for l in lines)
 
 
 def text(
@@ -152,19 +122,44 @@ def text(
     bg: int | None = None,
     overflow: str = "visible",
 ) -> Renderable:
-    t = Text(
-        value,
-        wrap=wrap,
-        truncation=truncation,
-        padding=padding,
-        padding_left=padding_left,
-        padding_right=padding_right,
-    )
-    return frame(
-        Renderable(t.render, t.flex_basis()),
-        width,
-        height,
-        grow,
-        bg,
-        overflow,
-    )
+    lines, visible_w = _parse_lines(value)
+    pl = padding if padding_left is None else padding_left
+    pr = padding if padding_right is None else padding_right
+    basis = visible_w + pl + pr
+
+    # Branch at build time so the per-frame render avoids feature checks.
+    if not wrap and not truncation and not pl and not pr:
+
+        def render(w: int, h: int | None = None) -> list[str]:
+            return lines
+
+    elif not wrap and not truncation:
+        pad_l = " " * pl
+        pad_r = " " * pr
+
+        def render(w: int, h: int | None = None) -> list[str]:
+            return [f"{pad_l}{c}{pad_r}" for c in lines]
+
+    else:
+        mode = truncation
+        pad_l = " " * pl
+        pad_r = " " * pr
+
+        def render(w: int, h: int | None = None) -> list[str]:
+            inner = w - pl - pr
+            chunks: list[str] = []
+            for line in lines:
+                if wrap and inner > 0:
+                    chunks.extend(_wrap_line(line, inner))
+                elif mode and inner > 0:
+                    chunks.append(_truncate_line(line, inner, mode))
+                else:
+                    chunks.append(line)
+            if not pl and not pr:
+                return chunks
+            return [f"{pad_l}{c}{pad_r}" for c in chunks]
+
+    # Skip frame() indirection when no constraints — avoids an extra Renderable.
+    if width is None and height is None and bg is None and overflow == "visible":
+        return Renderable(render, basis, grow or 0)
+    return frame(Renderable(render, basis), width, height, grow, bg, overflow)

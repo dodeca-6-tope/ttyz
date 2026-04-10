@@ -7,7 +7,7 @@ from terminal.measure import distribute
 
 
 def _resolve_flex_heights(
-    children: list[Renderable],
+    children: tuple[Renderable, ...] | list[Renderable],
     w: int,
     h: int,
     spacing: int,
@@ -17,23 +17,49 @@ def _resolve_flex_heights(
     Returns (rendered, flex_heights, has_height) where rendered[i] is None
     for deferred children and flex_heights maps grow-child indices to heights.
     """
-    has_height = {i for i, c in enumerate(children) if c.height is not None}
-    weights = [
-        (i, c.grow) for i, c in enumerate(children) if c.grow and i not in has_height
-    ]
-    deferred = {i for i, _ in weights} | has_height
-    rendered: list[list[str] | None] = [
-        None if i in deferred else c.render(w) for i, c in enumerate(children)
-    ]
+    rendered: list[list[str] | None] = []
+    grow_items: list[tuple[int, int]] = []
+    height_indices: list[int] = []
     used = spacing * max(0, len(children) - 1)
-    used += sum(len(r) for r in rendered if r is not None)
-    resolved_heights = {
-        i: c.resolve_height(h) for i, c in enumerate(children) if i in has_height
-    }
-    used += sum(v for v in resolved_heights.values() if v is not None)
-    shares = distribute(max(0, h - used), [wt for _, wt in weights])
-    flex_heights = {i: ht for (i, _), ht in zip(weights, shares)}
-    return rendered, flex_heights, has_height
+
+    for i, c in enumerate(children):
+        if c.height is not None:
+            height_indices.append(i)
+            rh = c.resolve_height(h)
+            if rh is not None:
+                used += rh
+            rendered.append(None)
+        elif c.grow:
+            grow_items.append((i, c.grow))
+            rendered.append(None)
+        else:
+            lines = c.render(w)
+            used += len(lines)
+            rendered.append(lines)
+
+    shares = distribute(max(0, h - used), [g for _, g in grow_items])
+    flex_heights = {i: ht for (i, _), ht in zip(grow_items, shares)}
+    return rendered, flex_heights, set(height_indices)
+
+
+def _virtualize(
+    children: tuple[Renderable, ...], w: int, h: int, spacing: int
+) -> list[str]:
+    """Render children until the viewport is full (no flex)."""
+    lines: list[str] = []
+    for i, child in enumerate(children):
+        remaining = h - len(lines)
+        if i > 0 and spacing:
+            if remaining <= spacing:
+                break
+            lines.extend([""] * spacing)
+            remaining -= spacing
+        rendered = child.render(w)
+        if len(rendered) >= remaining:
+            lines.extend(rendered[:remaining])
+            return lines
+        lines.extend(rendered)
+    return lines
 
 
 def vstack(
@@ -45,9 +71,8 @@ def vstack(
     bg: int | None = None,
     overflow: str = "visible",
 ) -> Renderable:
-    children_list = list(children)
-
-    basis = max((c.flex_basis for c in children_list), default=0)
+    basis = max((c.flex_basis for c in children), default=0)
+    has_flex = any(c.grow or c.height is not None for c in children)
 
     def join(parts: list[list[str]]) -> list[str]:
         if not spacing:
@@ -59,19 +84,15 @@ def vstack(
             lines.extend(part)
         return lines
 
-    def render_unconstrained(w: int) -> list[str]:
-        return join([c.render(w) for c in children_list])
-
-    def render_constrained(w: int, h: int) -> list[str]:
-        if not children_list:
+    def render(w: int, h: int | None = None) -> list[str]:
+        if h is None:
+            return join([c.render(w) for c in children])
+        if not children:
             return [""] * h
-
-        has_flex = any(c.grow or c.height is not None for c in children_list)
         if not has_flex:
-            return render_unconstrained(w)
-
+            return _virtualize(children, w, h, spacing)
         rendered, flex_heights, has_height = _resolve_flex_heights(
-            children_list, w, h, spacing
+            children, w, h, spacing
         )
         return join(
             [
@@ -80,13 +101,8 @@ def vstack(
                 else child.render(w, h)
                 if i in has_height
                 else child.render(w, flex_heights[i])
-                for i, child in enumerate(children_list)
+                for i, child in enumerate(children)
             ]
         )
-
-    def render(w: int, h: int | None = None) -> list[str]:
-        if h is None:
-            return render_unconstrained(w)
-        return render_constrained(w, h)
 
     return frame(Renderable(render, basis), width, height, grow, bg, overflow)

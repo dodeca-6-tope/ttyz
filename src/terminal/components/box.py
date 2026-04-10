@@ -16,6 +16,14 @@ BORDERS: dict[str, tuple[str, str, str, str, str, str]] = {
 }
 
 
+def _top_border(style: str, title: str, inner: int) -> str:
+    tl, tr, _, _, hz, _ = BORDERS[style]
+    if not title:
+        return f"{tl}{hz * inner}{tr}"
+    label = Text(truncate(title, inner - 2, ellipsis=True))
+    return f"{tl} {label} {hz * (inner - len(label) - 2)}{tr}"
+
+
 def box(
     child: Renderable,
     *,
@@ -35,33 +43,21 @@ def box(
     title_w = display_width(title) + 2 if title else 0
     natural = max(content_w, title_w)
     basis = natural + 2
-    r_grow = child.grow
-
-    def inner_width(w: int) -> int:
-        if child.grow:
-            return max(0, w - 2)
-        return max(0, min(natural, w - 2))
-
-    def top_border(inner: int) -> str:
-        tl, tr, _, _, hz, _ = BORDERS[style]
-        if not title:
-            return f"{tl}{hz * inner}{tr}"
-        label = Text(truncate(title, inner - 2, ellipsis=True))
-        return f"{tl} {label} {hz * (inner - len(label) - 2)}{tr}"
+    grows = child.grow
 
     def render(w: int, h: int | None = None) -> list[str]:
         _, _, bl, br, hz, v = BORDERS[style]
-        inner = inner_width(w)
+        # Grow: fill available width. Fixed: clamp to natural content width.
+        inner = max(0, w - 2) if grows else max(0, min(natural, w - 2))
         child_h = max(0, h - 2) if h is not None else None
         child_lines = child.render(max(0, inner - padding * 2), child_h)
 
-        top = top_border(inner)
         pad_str = " " * padding
         cw = inner - padding * 2
-        lines = [top]
+        lines = [_top_border(style, title, inner)]
         for line in child_lines:
             lines.append(f"{v}{pad_str}{clip_and_pad(line, cw)}{pad_str}{v}")
         lines.append(f"{bl}{hz * inner}{br}")
         return lines
 
-    return frame(Renderable(render, basis, r_grow), width, height, grow, bg, overflow)
+    return frame(Renderable(render, basis, grows), width, height, grow, bg, overflow)
