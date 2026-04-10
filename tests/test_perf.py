@@ -251,6 +251,56 @@ def test_nested_hstack():
     assert elapsed < 0.002, f"nested hstack x10 took {elapsed:.3f}s"
 
 
+def test_nested_hstack_ansi():
+    """Nested HStacks with ANSI content: flat path Python fallback, 10 renders."""
+
+    def build(depth: int):
+        if depth == 0:
+            return text("\033[1mleaf\033[0m")
+        return hstack(*[build(depth - 1) for _ in range(5)], spacing=1)
+
+    tree = build(4)
+    elapsed = _timed(lambda: tree.render(WIDTH), iterations=10)
+    assert elapsed < 0.003, f"nested hstack ANSI x10 took {elapsed:.3f}s"
+
+
+def test_hstack_grow_columns():
+    """200 grow-hstacks with 10 columns in a vstack, 50 renders (C join path)."""
+    rows = [
+        hstack(
+            text(f"c0-{i}"),
+            text(f"c1-{i}", grow=1),
+            text(f"c2-{i}"),
+            text(f"c3-{i}"),
+            text(f"c4-{i}", grow=1),
+            text(f"c5-{i}"),
+            text(f"c6-{i}"),
+            text(f"c7-{i}"),
+            text(f"c8-{i}"),
+            text(f"c9-{i}"),
+            spacing=1,
+        )
+        for i in range(200)
+    ]
+    tree = vstack(*rows)
+    elapsed = _timed(lambda: tree.render(WIDTH, HEIGHT * 4), iterations=50)
+    assert elapsed < 0.04, f"hstack grow 200x10 x50 took {elapsed:.3f}s"
+
+
+# ── Table viewport ─────────────────────────────────────────────────
+
+
+def test_table_viewport():
+    """Table with 500 rows sliced to viewport height, 50 renders."""
+    rows = [
+        table_row(text(f"id-{i}"), text(f"name-{i}", grow=1), text("ok"))
+        for i in range(500)
+    ]
+    tree = table(*rows)
+    elapsed = _timed(lambda: tree.render(WIDTH, HEIGHT), iterations=50)
+    assert elapsed < 0.008, f"table viewport 500 h={HEIGHT} x50 took {elapsed:.3f}s"
+
+
 # ── ZStack ──────────────────────────────────────────────────────────
 
 
