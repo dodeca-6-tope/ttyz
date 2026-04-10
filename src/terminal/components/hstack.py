@@ -239,12 +239,16 @@ def hstack(
 
             lines: list[str] = []
             for row in range(max_rows):
-                cells = [_aligned_cell(col, row, max_rows, align_items) for col in columns]
+                cells = [
+                    _aligned_cell(col, row, max_rows, align_items) for col in columns
+                ]
                 if fast:
                     lines.append(hstack_join_row(cells, col_widths, spacing))
                 else:
                     padded = [pad(cells[i], col_widths[i]) for i in range(len(cells))]
-                    lines.append(_justify_row(padded, remaining, spacing, justify_content))
+                    lines.append(
+                        _justify_row(padded, remaining, spacing, justify_content)
+                    )
             return lines
 
     return frame(Renderable(render, basis), width, height, grow, bg, overflow)
