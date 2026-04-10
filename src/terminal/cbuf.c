@@ -995,8 +995,8 @@ static PyObject *mod_c_make_text(PyObject *self, PyObject *args) {
     render->lines = lines;
     render->pl = pl;
     render->pr = pr;
-    render->pad_l = pl > 0 ? make_spaces(pl) : NULL;
-    render->pad_r = pr > 0 ? make_spaces(pr) : NULL;
+    render->pad_l = pl > 0 ? make_spaces(pl) : PyUnicode_FromStringAndSize("", 0);
+    render->pad_r = pr > 0 ? make_spaces(pr) : PyUnicode_FromStringAndSize("", 0);
     if (is_trunc) {
         Py_INCREF(truncation);
         render->truncation = truncation;

@@ -38,6 +38,14 @@ def test_padding_left_right():
     assert vis(text("hi", padding_left=1, padding_right=3).render(80)) == ["·hi···"]
 
 
+def test_padding_left_only():
+    assert vis(text("hi", padding_left=2).render(80)) == ["··hi"]
+
+
+def test_padding_right_only():
+    assert vis(text("hi", padding_right=2).render(80)) == ["hi··"]
+
+
 def test_padding_exceeds_width():
     result = vis(text("hi", padding=10).render(5))
     assert len(result) == 1
