@@ -30,7 +30,7 @@ class TTY:
         self._resized = False
         self._prev_sigwinch: Callable[[int, FrameType | None], Any] | int | None = None
         self._keys: KeyReader | None = None
-        self.screen = Screen()
+        self._screen = Screen()
         self._wake_r, self._wake_w = os.pipe()
         atexit.register(self.cleanup)
 
@@ -53,7 +53,7 @@ class TTY:
         if not self._active:
             return
         self._active = False
-        self.screen.invalidate()
+        self._screen.invalidate()
         sys.stdout.write(_EXIT)
         sys.stdout.flush()
         if self._saved and self._fd is not None:
@@ -66,7 +66,7 @@ class TTY:
 
     def _on_sigwinch(self, signum: int, frame: FrameType | None) -> None:
         self._resized = True
-        self.screen.invalidate()
+        self._screen.invalidate()
 
     def readkey(self, timeout: float = 1 / 60) -> str | Paste | None:
         """Read a single keypress. Returns 'resize' on terminal resize, None on timeout."""
@@ -79,6 +79,10 @@ class TTY:
             self._resized = False
             return "resize"
         return result
+
+    def render(self, lines: list[str]) -> None:
+        """Render a frame to the terminal."""
+        self._screen.render(lines)
 
     @property
     def size(self) -> os.terminal_size:
@@ -104,7 +108,7 @@ class TTY:
     def resume(self) -> None:
         """Re-enter alt screen and raw mode after a child process."""
         self._enter_raw()
-        self.screen.invalidate()
+        self._screen.invalidate()
 
     def _enter_raw(self) -> None:
         """Switch to raw mode with output processing, enter alt screen."""

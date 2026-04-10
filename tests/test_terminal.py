@@ -16,6 +16,27 @@ import pytest
 from terminal import TTY as Terminal
 from terminal.term import Paste
 
+# ── TTY.render ────────────────────────────────────────────────────
+
+
+def test_render_writes_content() -> None:
+    """TTY.render() should write the given lines to the terminal."""
+    from os import terminal_size
+    from unittest.mock import patch
+
+    from terminal.screen import Screen
+
+    chunks: list[str] = []
+    screen = Screen(write=lambda data: chunks.append(data.decode()), flush=lambda: None)
+    t = Terminal()
+    t._screen = screen
+    size = terminal_size((40, 10))
+    with patch("terminal.screen.os.get_terminal_size", return_value=size):
+        t.render(["hello", "world"])
+    output = "".join(chunks)
+    assert "hello" in output
+    assert "world" in output
+
 
 @pytest.fixture
 def term() -> Generator[tuple[Terminal, int], None, None]:

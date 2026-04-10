@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
             # render
             t0 = time.perf_counter()
-            term.screen.render(view(s).render(term.size.columns, term.size.lines))
+            term.render(view(s).render(term.size.columns, term.size.lines))
             s.render_times.append(time.perf_counter() - t0)
 
             # input (timeout = remaining frame budget @ ~60fps)
