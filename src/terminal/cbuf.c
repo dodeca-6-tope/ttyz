@@ -9,19 +9,59 @@
 #include <Python.h>
 #include <structmember.h>
 
-/* ── Style packing ─────────────────────────────────────────────────── */
+/* ── Style representation ─────────────────────────────────────────── */
 
-#define BG_SHIFT      9
-#define FLAGS_SHIFT  18
-#define STYLE_EMPTY   0
 #define WIDE_CHAR     0   /* ch == 0 marks wide-char continuation */
 
+/* Color kinds */
+#define COLOR_NONE    0
+#define COLOR_INDEXED 1   /* 256-color palette: value in .r */
+#define COLOR_RGB     2   /* 24-bit true color */
+
 typedef struct {
-    Py_UCS4  ch;
-    uint32_t style;
+    uint8_t kind;   /* COLOR_NONE / COLOR_INDEXED / COLOR_RGB */
+    uint8_t r;      /* red or palette index */
+    uint8_t g;
+    uint8_t b;
+} Color;
+
+#define COLOR_EMPTY ((Color){COLOR_NONE, 0, 0, 0})
+
+/* Attribute flags (bit positions in uint16_t) */
+#define FLAG_BOLD          (1 << 0)
+#define FLAG_DIM           (1 << 1)
+#define FLAG_ITALIC        (1 << 2)
+#define FLAG_UNDERLINE     (1 << 3)
+#define FLAG_BLINK         (1 << 4)
+#define FLAG_REVERSE       (1 << 5)
+#define FLAG_INVISIBLE     (1 << 6)
+#define FLAG_STRIKETHROUGH (1 << 7)
+#define FLAG_OVERLINE      (1 << 8)
+
+typedef struct {
+    Color    fg;
+    Color    bg;
+    uint16_t flags;
+    uint8_t  _pad[2]; /* keep struct 12 bytes for alignment */
+} Style;
+
+#define STYLE_EMPTY ((Style){COLOR_EMPTY, COLOR_EMPTY, 0, {0, 0}})
+
+static inline int style_eq(Style a, Style b) {
+    return memcmp(&a, &b, sizeof(Style)) == 0;
+}
+
+static inline int style_is_empty(Style s) {
+    Style empty = STYLE_EMPTY;
+    return memcmp(&s, &empty, sizeof(Style)) == 0;
+}
+
+typedef struct {
+    Py_UCS4 ch;
+    Style   style;
 } Cell;
 
-#define BLANK_CELL (Cell){' ', STYLE_EMPTY}
+#define BLANK_CELL ((Cell){' ', STYLE_EMPTY})
 
 /* ── Growable byte buffer ──────────────────────────────────────────── */
 
@@ -99,35 +139,68 @@ static inline int encode_utf8(Py_UCS4 ch, char *out) {
 
 /* ── SGR output ────────────────────────────────────────────────────── */
 
-static void emit_sgr(OutBuf *b, uint32_t style) {
-    if (style == STYLE_EMPTY) {
+static void emit_color(char *tmp, int *n, int sz, Color c, int is_bg) {
+    int base = is_bg ? 48 : 38;
+    if (c.kind == COLOR_INDEXED) {
+        *n += snprintf(tmp + *n, sz - *n, ";%d;5;%u", base, c.r);
+    } else if (c.kind == COLOR_RGB) {
+        *n += snprintf(tmp + *n, sz - *n, ";%d;2;%u;%u;%u", base, c.r, c.g, c.b);
+    }
+}
+
+static void emit_sgr(OutBuf *b, Style style) {
+    if (style_is_empty(style)) {
         outbuf_add(b, "\033[0m", 4);
         return;
     }
-    uint32_t fg    = style & 0x1FF;
-    uint32_t bg    = (style >> BG_SHIFT) & 0x1FF;
-    uint32_t flags = (style >> FLAGS_SHIFT) & 0xF;
+    uint16_t f = style.flags;
 
-    char tmp[64];
+    char tmp[96];
     int n = snprintf(tmp, sizeof(tmp), "\033[0");
-    if (flags & 1) { tmp[n++] = ';'; tmp[n++] = '1'; }
-    if (flags & 2) { tmp[n++] = ';'; tmp[n++] = '2'; }
-    if (flags & 4) { tmp[n++] = ';'; tmp[n++] = '3'; }
-    if (flags & 8) { tmp[n++] = ';'; tmp[n++] = '7'; }
-    if (fg) n += snprintf(tmp + n, sizeof(tmp) - n, ";38;5;%u", fg - 1);
-    if (bg) n += snprintf(tmp + n, sizeof(tmp) - n, ";48;5;%u", bg - 1);
+    if (f & FLAG_BOLD)          n += snprintf(tmp + n, sizeof(tmp) - n, ";1");
+    if (f & FLAG_DIM)           n += snprintf(tmp + n, sizeof(tmp) - n, ";2");
+    if (f & FLAG_ITALIC)        n += snprintf(tmp + n, sizeof(tmp) - n, ";3");
+    if (f & FLAG_UNDERLINE)     n += snprintf(tmp + n, sizeof(tmp) - n, ";4");
+    if (f & FLAG_BLINK)         n += snprintf(tmp + n, sizeof(tmp) - n, ";5");
+    if (f & FLAG_REVERSE)       n += snprintf(tmp + n, sizeof(tmp) - n, ";7");
+    if (f & FLAG_INVISIBLE)     n += snprintf(tmp + n, sizeof(tmp) - n, ";8");
+    if (f & FLAG_STRIKETHROUGH) n += snprintf(tmp + n, sizeof(tmp) - n, ";9");
+    if (f & FLAG_OVERLINE)      n += snprintf(tmp + n, sizeof(tmp) - n, ";53");
+    emit_color(tmp, &n, sizeof(tmp), style.fg, 0);
+    emit_color(tmp, &n, sizeof(tmp), style.bg, 1);
     tmp[n++] = 'm';
     outbuf_add(b, tmp, (size_t)n);
 }
 
 /* ── SGR parameter parsing ─────────────────────────────────────────── */
 
+/*
+ * State machine for parsing SGR parameters, supporting:
+ *   38;5;N (indexed fg), 48;5;N (indexed bg),
+ *   38;2;R;G;B (RGB fg), 48;2;R;G;B (RGB bg),
+ *   and all standard attribute codes.
+ */
 static void parse_sgr(const void *data, int kind,
                       Py_ssize_t start, Py_ssize_t end,
-                      uint32_t *fg, uint32_t *bg, uint32_t *flags)
+                      Color *fg, Color *bg, uint16_t *flags)
 {
     int num = -1;
-    int state = 0; /* 0=normal, 1=after 38, 2=after 38;5, 3=after 48, 4=after 48;5 */
+    /*
+     * States:
+     *   0 = normal
+     *   1 = after 38         (fg color intro)
+     *   2 = after 38;5       (fg indexed — next num is palette index)
+     *   3 = after 48         (bg color intro)
+     *   4 = after 48;5       (bg indexed — next num is palette index)
+     *   5 = after 38;2       (fg RGB — next 3 nums are R, G, B)
+     *   6 = after 38;2;R     (fg RGB — got R)
+     *   7 = after 38;2;R;G   (fg RGB — got R, G)
+     *   8 = after 48;2       (bg RGB)
+     *   9 = after 48;2;R
+     *  10 = after 48;2;R;G
+     */
+    int state = 0;
+    uint8_t rgb[3] = {0, 0, 0};
 
     for (Py_ssize_t i = start; i <= end; i++) {
         Py_UCS4 c = (i < end) ? PyUnicode_READ(kind, data, i) : ';';
@@ -140,25 +213,52 @@ static void parse_sgr(const void *data, int kind,
         /* separator or end */
         if (num < 0) num = 0;
 
-        if (state == 2) {
-            *fg = (uint32_t)num + 1; state = 0;
-        } else if (state == 4) {
-            *bg = (uint32_t)num + 1; state = 0;
-        } else if (state == 1 && num == 5) {
-            state = 2;
-        } else if (state == 3 && num == 5) {
-            state = 4;
-        } else {
+        switch (state) {
+        case 2: /* fg indexed */
+            *fg = (Color){COLOR_INDEXED, (uint8_t)num, 0, 0};
+            state = 0; break;
+        case 4: /* bg indexed */
+            *bg = (Color){COLOR_INDEXED, (uint8_t)num, 0, 0};
+            state = 0; break;
+        case 5: /* fg RGB: R */
+            rgb[0] = (uint8_t)num; state = 6; break;
+        case 6: /* fg RGB: G */
+            rgb[1] = (uint8_t)num; state = 7; break;
+        case 7: /* fg RGB: B */
+            *fg = (Color){COLOR_RGB, rgb[0], rgb[1], (uint8_t)num};
+            state = 0; break;
+        case 8: /* bg RGB: R */
+            rgb[0] = (uint8_t)num; state = 9; break;
+        case 9: /* bg RGB: G */
+            rgb[1] = (uint8_t)num; state = 10; break;
+        case 10: /* bg RGB: B */
+            *bg = (Color){COLOR_RGB, rgb[0], rgb[1], (uint8_t)num};
+            state = 0; break;
+        case 1: /* after 38 */
+            if (num == 5) { state = 2; goto next; }
+            if (num == 2) { state = 5; goto next; }
+            state = 0; break;
+        case 3: /* after 48 */
+            if (num == 5) { state = 4; goto next; }
+            if (num == 2) { state = 8; goto next; }
+            state = 0; break;
+        default: /* state 0 */
             switch (num) {
-            case  0: *fg = *bg = *flags = 0; break;
-            case  1: *flags |= 1; break;
-            case  2: *flags |= 2; break;
-            case  3: *flags |= 4; break;
-            case  7: *flags |= 8; break;
+            case  0: *fg = COLOR_EMPTY; *bg = COLOR_EMPTY; *flags = 0; break;
+            case  1: *flags |= FLAG_BOLD; break;
+            case  2: *flags |= FLAG_DIM; break;
+            case  3: *flags |= FLAG_ITALIC; break;
+            case  4: *flags |= FLAG_UNDERLINE; break;
+            case  5: *flags |= FLAG_BLINK; break;
+            case  7: *flags |= FLAG_REVERSE; break;
+            case  8: *flags |= FLAG_INVISIBLE; break;
+            case  9: *flags |= FLAG_STRIKETHROUGH; break;
+            case 53: *flags |= FLAG_OVERLINE; break;
             case 38: state = 1; goto next;
             case 48: state = 3; goto next;
             }
             state = 0;
+            break;
         }
     next:
         num = -1;
@@ -202,6 +302,42 @@ static inline Py_ssize_t skip_csi(const void *data, int kind,
     return end;
 }
 
+/* Skip any escape sequence starting at pos.  Always advances past the
+   sequence — unlike skip_csi, never returns pos unchanged. */
+static inline Py_ssize_t skip_escape(const void *data, int kind,
+                                      Py_ssize_t pos, Py_ssize_t len) {
+    if (pos + 1 >= len) return pos + 1;
+    Py_UCS4 next = PyUnicode_READ(kind, data, pos + 1);
+
+    if (next == '[') {
+        /* CSI: ESC [ ... final_byte (0x40-0x7E) */
+        Py_ssize_t end = pos + 2;
+        while (end < len) {
+            Py_UCS4 fb = PyUnicode_READ(kind, data, end);
+            end++;
+            if (fb >= 0x40 && fb <= 0x7E) break;
+        }
+        return end;
+    }
+
+    if (next == ']') {
+        /* OSC: ESC ] ... terminated by BEL or ST (ESC \) */
+        Py_ssize_t end = pos + 2;
+        while (end < len) {
+            Py_UCS4 ch = PyUnicode_READ(kind, data, end);
+            if (ch == 0x07) return end + 1;              /* BEL */
+            if (ch == 0x1B && end + 1 < len &&
+                PyUnicode_READ(kind, data, end + 1) == '\\')
+                return end + 2;                           /* ST */
+            end++;
+        }
+        return end;
+    }
+
+    /* Other ESC sequence (e.g. ESC ( B): skip ESC + next byte */
+    return pos + 2;
+}
+
 /* Compute display width of a Python unicode string (ANSI-aware). */
 static int str_display_width(PyObject *s) {
     Py_ssize_t len = PyUnicode_GET_LENGTH(s);
@@ -216,7 +352,7 @@ static int str_display_width(PyObject *s) {
     int width = 0;
     for (Py_ssize_t pos = 0; pos < len; ) {
         Py_UCS4 ch = PyUnicode_READ(kind, data, pos);
-        if (ch == 0x1B) { pos = skip_csi(data, kind, pos, len); continue; }
+        if (ch == 0x1B) { pos = skip_escape(data, kind, pos, len); continue; }
         width += cwidth(ch);
         pos++;
     }
@@ -360,22 +496,25 @@ static PyObject *mod_parse_line(PyObject *self, PyObject *args) {
     /* Slow path: ANSI + wide chars */
     int col = 0;
     Py_ssize_t pos = 0;
-    uint32_t fg = 0, bg = 0, flags = 0, style = STYLE_EMPTY;
+    Color fg = COLOR_EMPTY, bg = COLOR_EMPTY;
+    uint16_t flags = 0;
+    Style style = STYLE_EMPTY;
 
     while (pos < len && col < w) {
         Py_UCS4 ch = PyUnicode_READ(kind, data, pos);
 
         if (ch == 0x1B) {
-            Py_ssize_t end = skip_csi(data, kind, pos, len);
-            if (end != pos) {
+            Py_ssize_t csi_end = skip_csi(data, kind, pos, len);
+            if (csi_end != pos) {
                 /* CSI: find 'm' terminator for SGR parsing */
                 Py_ssize_t m = pos + 2;
-                while (m < end && PyUnicode_READ(kind, data, m) != 'm') m++;
+                while (m < csi_end && PyUnicode_READ(kind, data, m) != 'm') m++;
                 parse_sgr(data, kind, pos + 2, m, &fg, &bg, &flags);
-                style = fg | (bg << BG_SHIFT) | (flags << FLAGS_SHIFT);
-                pos = end;
+                style = (Style){fg, bg, flags, {0, 0}};
+                pos = csi_end;
             } else {
-                pos++;
+                /* OSC or other escape — skip entirely */
+                pos = skip_escape(data, kind, pos, len);
             }
             continue;
         }
@@ -413,7 +552,7 @@ static PyObject *mod_render_full(PyObject *self, PyObject *args) {
         return PyErr_NoMemory();
 
     outbuf_add(&out, "\033[0m", 4);  /* reset to known state */
-    uint32_t active = STYLE_EMPTY;
+    Style active = STYLE_EMPTY;
 
     for (int row = 0; row < h; row++) {
         outbuf_printf(&out, "\033[%d;1H", row + 1);
@@ -421,7 +560,7 @@ static PyObject *mod_render_full(PyObject *self, PyObject *args) {
         for (int col = 0; col < w; col++) {
             Cell c = cells[off + col];
             if (c.ch == WIDE_CHAR) continue;
-            if (c.style != active) {
+            if (!style_eq(c.style, active)) {
                 emit_sgr(&out, c.style);
                 active = c.style;
             }
@@ -431,7 +570,7 @@ static PyObject *mod_render_full(PyObject *self, PyObject *args) {
         }
     }
 
-    if (active != STYLE_EMPTY)
+    if (!style_is_empty(active))
         outbuf_add(&out, "\033[0m", 4);
 
     return outbuf_to_pystr(&out);
@@ -464,7 +603,7 @@ static PyObject *mod_render_diff(PyObject *self, PyObject *args) {
     if (outbuf_init(&out, 4096) < 0)
         return PyErr_NoMemory();
 
-    uint32_t active = STYLE_EMPTY;
+    Style active = STYLE_EMPTY;
 
     for (int row = 0; row < h; row++) {
         int off = row * w;
@@ -477,12 +616,12 @@ static PyObject *mod_render_diff(PyObject *self, PyObject *args) {
         while (col < w) {
             Cell c = cc[off + col];
             Cell p = pc[off + col];
-            if (c.ch == p.ch && c.style == p.style) { col++; continue; }
+            if (c.ch == p.ch && style_eq(c.style, p.style)) { col++; continue; }
             if (c.ch == WIDE_CHAR) { col++; continue; }
 
             /* Start a dirty run */
             outbuf_printf(&out, "\033[%d;%dH", row + 1, col + 1);
-            if (c.style != active) {
+            if (!style_eq(c.style, active)) {
                 emit_sgr(&out, c.style);
                 active = c.style;
             }
@@ -494,9 +633,9 @@ static PyObject *mod_render_diff(PyObject *self, PyObject *args) {
             while (col < w) {
                 Cell c2 = cc[off + col];
                 Cell p2 = pc[off + col];
-                if (c2.ch == p2.ch && c2.style == p2.style) break;
+                if (c2.ch == p2.ch && style_eq(c2.style, p2.style)) break;
                 if (c2.ch == WIDE_CHAR) { col++; continue; }
-                if (c2.style != active) {
+                if (!style_eq(c2.style, active)) {
                     emit_sgr(&out, c2.style);
                     active = c2.style;
                 }
@@ -506,7 +645,7 @@ static PyObject *mod_render_diff(PyObject *self, PyObject *args) {
         }
     }
 
-    if (active != STYLE_EMPTY)
+    if (!style_is_empty(active))
         outbuf_add(&out, "\033[0m", 4);
 
     return outbuf_to_pystr(&out);
@@ -664,8 +803,8 @@ static PyObject *mod_hstack_join_row(PyObject *self, PyObject *args) {
             char u8[4];
 
             if (ch == 0x1B) {
-                /* Copy CSI escape sequence verbatim (doesn't count as visible). */
-                Py_ssize_t end = skip_csi(data, kind, j, clen);
+                /* Copy escape sequence verbatim (doesn't count as visible). */
+                Py_ssize_t end = skip_escape(data, kind, j, clen);
                 for (Py_ssize_t k = j; k < end; k++) {
                     Py_UCS4 ec = PyUnicode_READ(kind, data, k);
                     outbuf_add(&ob, u8, encode_utf8(ec, u8));
@@ -1150,11 +1289,6 @@ PyMODINIT_FUNC PyInit_cbuf(void) {
     Py_INCREF(&CRenderableType);
     if (PyModule_AddObject(m, "Renderable", (PyObject *)&CRenderableType) < 0) {
         Py_DECREF(&CRenderableType);
-        Py_DECREF(m);
-        return NULL;
-    }
-
-    if (PyModule_AddIntConstant(m, "EMPTY", STYLE_EMPTY) < 0) {
         Py_DECREF(m);
         return NULL;
     }

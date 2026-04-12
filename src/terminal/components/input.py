@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from terminal.components.base import Renderable, frame
-from terminal.term import Paste
+from terminal.keys import Event, Key, Paste
 
 
 @dataclass(frozen=True, order=True)
@@ -30,12 +30,14 @@ class InputBuffer:
         self.cursor = cursor if cursor is not None else len(value)
         self.pastes: list[PasteRange] = sorted(pastes) if pastes else []
 
-    def handle_key(self, key: str | Paste) -> bool:
-        """Process a key or paste event. Returns True if handled, False otherwise."""
-        if isinstance(key, Paste):
-            self._paste(key.text)
+    def handle_key(self, event: Event) -> bool:
+        """Process an input event. Returns True if handled, False otherwise."""
+        if isinstance(event, Paste):
+            self._paste(event.text)
             return True
-        match key:
+        if not isinstance(event, Key):
+            return False
+        match event.name:
             case "left":
                 self._move_left()
             case "right":

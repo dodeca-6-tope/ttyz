@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import contextlib
 import os
+import select as _select
 import signal
 import sys
 import termios
@@ -13,7 +14,15 @@ from collections.abc import Callable
 from types import FrameType
 from typing import Any
 
-from terminal.keys import KeyReader, Paste
+from terminal.control import Command
+from terminal.keys import (
+    KITTY_DISABLE,
+    KITTY_ENABLE,
+    KITTY_QUERY,
+    Event,
+    KeyReader,
+    Resize,
+)
 from terminal.screen import Screen
 
 _ENTER = "\033[?1049h\033[?25l\033[?7l\033[?2004h\033[?1004h\033[?1000h\033[?1006h"
@@ -28,6 +37,7 @@ class TTY:
         self._saved: list[Any] | None = None
         self._active = False
         self._resized = False
+        self._kitty = False
         self._prev_sigwinch: Callable[[int, FrameType | None], Any] | int | None = None
         self._keys: KeyReader | None = None
         self._screen = screen or Screen()
@@ -54,6 +64,9 @@ class TTY:
             return
         self._active = False
         self._screen.invalidate()
+        if self._kitty:
+            sys.stdout.write(KITTY_DISABLE)
+            self._kitty = False
         sys.stdout.write(_EXIT)
         sys.stdout.flush()
         if self._saved and self._fd is not None:
@@ -68,21 +81,31 @@ class TTY:
         self._resized = True
         self._screen.invalidate()
 
-    def readkey(self, timeout: float = 1 / 60) -> str | Paste | None:
-        """Read a single keypress. Returns 'resize' on terminal resize, None on timeout."""
+    def readkey(self, timeout: float = 1 / 60) -> Event | None:
+        """Read a single input event. Returns None on timeout."""
         assert self._keys is not None
         if self._resized:
             self._resized = False
-            return "resize"
+            size = os.get_terminal_size()
+            return Resize(cols=size.columns, lines=size.lines)
         result = self._keys.read(timeout)
         if result is None and self._resized:
             self._resized = False
-            return "resize"
+            size = os.get_terminal_size()
+            return Resize(cols=size.columns, lines=size.lines)
         return result
 
     def draw(self, lines: list[str]) -> None:
         """Draw a frame to the terminal."""
         self._screen.render(lines)
+
+    def write(self, *commands: Command) -> None:
+        """Write control commands to the terminal.
+
+        tty.write(SetTitle("my app"), CursorShape(2))
+        """
+        sys.stdout.write("".join(c.sequence() for c in commands))
+        sys.stdout.flush()
 
     @property
     def size(self) -> os.terminal_size:
@@ -100,6 +123,8 @@ class TTY:
 
     def suspend(self) -> None:
         """Leave alt screen and restore terminal for a child process."""
+        if self._kitty:
+            sys.stdout.write(KITTY_DISABLE)
         sys.stdout.write(_EXIT)
         sys.stdout.flush()
         if self._saved and self._fd is not None:
@@ -108,7 +133,42 @@ class TTY:
     def resume(self) -> None:
         """Re-enter alt screen and raw mode after a child process."""
         self._enter_raw()
+        if self._kitty:
+            sys.stdout.write(KITTY_ENABLE)
+            sys.stdout.flush()
         self._screen.invalidate()
+
+    def kitty_supported(self) -> bool:
+        """Check if terminal supports Kitty keyboard protocol."""
+        if self._fd is None:
+            return False
+        sys.stdout.write(KITTY_QUERY)
+        sys.stdout.flush()
+        ready = _select.select([self._fd], [], [], 0.01)[0]
+        if not ready:
+            return False
+        buf = os.read(self._fd, 256)
+        idx = buf.find(b"\x1b[?")
+        if idx < 0:
+            return False
+        for i in range(idx + 3, len(buf)):
+            if buf[i] == ord("u"):
+                return True
+            if not (0x30 <= buf[i] <= 0x3F):
+                break
+        return False
+
+    def kitty_enable(self) -> None:
+        """Enable Kitty keyboard protocol. Keys will include modifier info."""
+        self._kitty = True
+        sys.stdout.write(KITTY_ENABLE)
+        sys.stdout.flush()
+
+    def kitty_disable(self) -> None:
+        """Disable Kitty keyboard protocol."""
+        self._kitty = False
+        sys.stdout.write(KITTY_DISABLE)
+        sys.stdout.flush()
 
     def _enter_raw(self) -> None:
         """Switch to raw mode with output processing, enter alt screen."""

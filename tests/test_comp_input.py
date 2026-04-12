@@ -2,8 +2,8 @@
 
 from terminal import input
 from terminal.components.input import InputBuffer, display_text
+from terminal.keys import Paste
 from terminal.measure import strip_ansi
-from terminal.term import Paste
 
 
 def test_renders_value():
@@ -36,7 +36,7 @@ def test_wraps_long_content():
 
 def test_paste_display():
     ti = InputBuffer()
-    ti.handle_key(Paste("long pasted text here"))
+    ti.handle_key(Paste(text="long pasted text here"))
     assert "[Pasted +" in display_text(ti)
 
 

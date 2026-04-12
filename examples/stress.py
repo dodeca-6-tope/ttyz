@@ -117,21 +117,21 @@ if __name__ == "__main__":
             s.render_times.append(time.perf_counter() - t0)
 
             # input (timeout = remaining frame budget @ ~60fps)
-            key = term.readkey(max(0, 1 / 60 - s.render_times[-1]))
-            if key is None or key == "resize":
+            event = term.readkey(max(0, 1 / 60 - s.render_times[-1]))
+            if event is None or isinstance(event, t.Resize):
                 continue
-            match key:
-                case "space":
+            match event:
+                case t.Key(name="space"):
                     s.paused = not s.paused
-                case "right":
+                case t.Key(name="right"):
                     s.speed = min(5.0, s.speed + 0.5)
-                case "left":
+                case t.Key(name="left"):
                     s.speed = max(0.5, s.speed - 0.5)
-                case "r":
+                case t.Key(name="r"):
                     s.a = s.b = 0.0
-                case "?":
+                case t.Key(name="?"):
                     s.show_help = not s.show_help
-                case "q" | "ctrl-q" | "ctrl-d":
+                case t.Key(name="q" | "ctrl-q" | "ctrl-d"):
                     break
                 case _:
                     pass

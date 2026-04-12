@@ -57,8 +57,8 @@ def test_clip_and_pad_ascii():
 def test_clip_and_pad_ansi():
     """Regression guard: _clip_scan ANSI parse performance.
 
-    Python _ansi_end is the minimal implementation (no bolt-on to disable).
-    Disabling C skip_csi has no effect — this path is pure Python.
+    Python _escape_end is the minimal implementation (no bolt-on to disable).
+    Disabling C skip_escape has no effect — this path is pure Python.
     """
     lines = [f"\033[1m{'a' * 196}\033[0m"] * 10_000
     elapsed = _timed(lambda: [clip_and_pad(l, WIDTH) for l in lines])

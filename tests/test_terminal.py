@@ -14,9 +14,25 @@ from collections.abc import Generator
 import pytest
 
 from terminal import TTY as Terminal
-from terminal.term import Paste
+from terminal.keys import Event, Focus, Mouse
 
 # ── TTY.render ────────────────────────────────────────────────────
+
+
+def test_write_sends_command_sequences() -> None:
+    """TTY.write() should send command escape sequences to stdout."""
+    import io
+    from unittest.mock import patch
+
+    from terminal import SetTitle, ShowCursor
+
+    buf = io.StringIO()
+    t = Terminal()
+    with patch("terminal.term.sys.stdout", buf):
+        t.write(SetTitle("test"), ShowCursor())
+    output = buf.getvalue()
+    assert "\033]2;test\033\\" in output
+    assert "\033[?25h" in output
 
 
 def test_draw_writes_content() -> None:
@@ -51,7 +67,7 @@ def term() -> Generator[tuple[Terminal, int], None, None]:
     os.close(slave)
 
 
-def send(term_and_master: tuple[Terminal, int], data: bytes) -> str | Paste | None:
+def send(term_and_master: tuple[Terminal, int], data: bytes) -> Event | None:
     t, master = term_and_master
     os.write(master, data)
     return t.readkey()
@@ -99,11 +115,11 @@ def test_option_right_esc_f(term: tuple[Terminal, int]) -> None:
 
 
 def test_scroll_up_mouse(term: tuple[Terminal, int]) -> None:
-    assert send(term, b"\x1b[<64;10;20M") == "scroll-up"
+    assert send(term, b"\x1b[<64;10;20M") == Mouse(action="scroll-up", x=10, y=20)
 
 
 def test_scroll_down_mouse(term: tuple[Terminal, int]) -> None:
-    assert send(term, b"\x1b[<65;10;20M") == "scroll-down"
+    assert send(term, b"\x1b[<65;10;20M") == Mouse(action="scroll-down", x=10, y=20)
 
 
 def test_mouse_click_ignored(term: tuple[Terminal, int]) -> None:
@@ -196,11 +212,11 @@ def test_esc(term: tuple[Terminal, int]) -> None:
 
 
 def test_focus(term: tuple[Terminal, int]) -> None:
-    assert send(term, b"\x1b[I") == "focus"
+    assert send(term, b"\x1b[I") == Focus(gained=True)
 
 
 def test_focus_lost(term: tuple[Terminal, int]) -> None:
-    assert send(term, b"\x1b[O") is None
+    assert send(term, b"\x1b[O") == Focus(gained=False)
 
 
 # ── active / suspend / resume ──────────────────────────────────────

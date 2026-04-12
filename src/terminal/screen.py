@@ -27,24 +27,28 @@ def clip(line: str, width: int) -> str:
     return _clip_scan(line, width)
 
 
-def _ansi_end(line: str, pos: int) -> int:
-    """If pos starts a CSI escape, return position after it. Else return pos."""
+def _escape_end(line: str, pos: int) -> int:
+    """If pos starts an escape sequence, return position after it. Else return pos."""
     if line[pos] != "\033":
         return pos
     n = len(line)
-    if pos + 1 >= n or line[pos + 1] != "[":
+    if pos + 1 >= n:
         return pos
-    end = pos + 2
-    while end < n and not ("\x40" <= line[end] <= "\x7e"):
-        end += 1
-    return end + 1 if end < n else pos
+    if line[pos + 1] == "[":
+        # CSI: ESC [ ... final_byte (0x40-0x7E)
+        end = pos + 2
+        while end < n and not ("\x40" <= line[end] <= "\x7e"):
+            end += 1
+        return end + 1 if end < n else pos
+    # Other ESC sequence: skip ESC + next byte
+    return pos + 2
 
 
 def _clip_scan(line: str, width: int, *, pad_to: bool = False) -> str:
     visible = 0
     pos = 0
     while pos < len(line):
-        end = _ansi_end(line, pos)
+        end = _escape_end(line, pos)
         if end != pos:
             pos = end
             continue

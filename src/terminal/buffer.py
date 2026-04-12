@@ -5,7 +5,6 @@ point of coupling to the native layer.
 """
 
 from terminal.cbuf import (
-    EMPTY,
     Buffer,
     Renderable,
     c_make_text,
@@ -23,7 +22,6 @@ from terminal.cbuf import (
 )
 
 __all__ = [
-    "EMPTY",
     "Buffer",
     "Renderable",
     "c_display_width",
