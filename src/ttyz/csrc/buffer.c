@@ -108,16 +108,21 @@ static PyObject *Buffer_parse_line(BufferObject *self, PyObject *args) {
         Py_UCS4 ch = PyUnicode_READ(kind, data, pos);
 
         if (ch == 0x1B) {
-            Py_ssize_t csi_end = skip_csi(data, kind, pos, len);
-            if (csi_end != pos) {
-                /* CSI: find 'm' terminator for SGR parsing */
+            if (pos + 1 < len &&
+                PyUnicode_READ(kind, data, pos + 1) == '[') {
+                /* CSI: scan to final byte, parse SGR */
+                Py_ssize_t end = pos + 2;
+                while (end < len) {
+                    Py_UCS4 fb = PyUnicode_READ(kind, data, end);
+                    end++;
+                    if (fb >= 0x40 && fb <= 0x7E) break;
+                }
                 Py_ssize_t m = pos + 2;
-                while (m < csi_end && PyUnicode_READ(kind, data, m) != 'm') m++;
+                while (m < end && PyUnicode_READ(kind, data, m) != 'm') m++;
                 parse_sgr(data, kind, pos + 2, m, &fg, &bg, &flags);
                 style = (Style){fg, bg, flags, {0, 0}};
-                pos = csi_end;
+                pos = end;
             } else {
-                /* OSC or other escape — skip entirely */
                 pos = skip_escape(data, kind, pos, len);
             }
             continue;
@@ -155,7 +160,7 @@ static PyObject *Buffer_render_full(BufferObject *self, PyObject *args) {
     Style active = STYLE_EMPTY;
 
     for (int row = 0; row < h; row++) {
-        outbuf_printf(&out, "\033[%d;1H", row + 1);
+        outbuf_moveto(&out, row + 1, 1);
         int off = row * w;
         for (int col = 0; col < w; col++) {
             Cell c = cells[off + col];
@@ -220,7 +225,7 @@ static PyObject *Buffer_diff(BufferObject *self, PyObject *args) {
             if (c.ch == WIDE_CHAR) { col++; continue; }
 
             /* Start a dirty run */
-            outbuf_printf(&out, "\033[%d;%dH", row + 1, col + 1);
+            outbuf_moveto(&out, row + 1, col + 1);
             if (!style_eq(c.style, active)) {
                 emit_sgr(&out, c.style);
                 active = c.style;

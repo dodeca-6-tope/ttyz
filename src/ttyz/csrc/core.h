@@ -102,13 +102,42 @@ static inline void outbuf_add(OutBuf *b, const char *s, size_t n) {
     b->len += n;
 }
 
-static void outbuf_printf(OutBuf *b, const char *fmt, ...) {
-    va_list ap;
-    char tmp[64];
-    va_start(ap, fmt);
-    int n = vsnprintf(tmp, sizeof(tmp), fmt, ap);
-    va_end(ap);
-    if (n > 0) outbuf_add(b, tmp, (size_t)n);
+/* Fast unsigned int → ASCII digits (handles 0–9999 inline, fallback for larger). */
+static inline int uint_to_str(unsigned val, char *out) {
+    if (val < 10)  { out[0] = '0' + val; return 1; }
+    if (val < 100) { out[0] = '0' + val / 10; out[1] = '0' + val % 10; return 2; }
+    if (val < 1000) {
+        out[0] = '0' + val / 100;
+        out[1] = '0' + val / 10 % 10;
+        out[2] = '0' + val % 10;
+        return 3;
+    }
+    char tmp[10];
+    int n = 0;
+    do { tmp[n++] = '0' + val % 10; val /= 10; } while (val);
+    for (int i = 0; i < n; i++) out[i] = tmp[n - 1 - i];
+    return n;
+}
+
+/* Emit CSI cursor-position sequence: ESC [ row ; col H */
+static void outbuf_moveto(OutBuf *b, int row, int col) {
+    char tmp[16];
+    memcpy(tmp, "\033[", 2);
+    int n = 2;
+    n += uint_to_str((unsigned)row, tmp + n);
+    tmp[n++] = ';';
+    n += uint_to_str((unsigned)col, tmp + n);
+    tmp[n++] = 'H';
+    outbuf_add(b, tmp, (size_t)n);
+}
+
+/* Write n space characters. */
+static inline void outbuf_spaces(OutBuf *b, int n) {
+    if (n <= 0) return;
+    outbuf_grow(b, (size_t)n);
+    if (b->oom) return;
+    memset(b->data + b->len, ' ', (size_t)n);
+    b->len += (size_t)n;
 }
 
 /* Helper: convert OutBuf to Python str, or raise MemoryError on OOM. */
@@ -147,7 +176,7 @@ static inline int cwidth(Py_UCS4 ch) {
     return w > 0 ? w : 0;
 }
 
-/* ── ASCII escape skipper ─────────────────────────────────────────── */
+/* ── Escape sequence skippers ─────────────────────────────────────── */
 
 /* Skip any escape sequence in a raw char buffer starting at src[pos]
    (which must be ESC).  Handles CSI, OSC (BEL / ST), and other ESC+byte.
@@ -184,25 +213,8 @@ static inline Py_ssize_t skip_escape_ascii(const char *src, Py_ssize_t pos,
     return pos + 2;
 }
 
-/* ── Unicode helpers ──────────────────────────────────────────────── */
-
-/* Skip a CSI escape sequence (ESC [ ... final_byte) starting at pos.
-   Returns the position AFTER the sequence, or pos if not a CSI. */
-static inline Py_ssize_t skip_csi(const void *data, int kind,
-                                   Py_ssize_t pos, Py_ssize_t len) {
-    if (pos + 1 >= len || PyUnicode_READ(kind, data, pos + 1) != '[')
-        return pos;
-    Py_ssize_t end = pos + 2;
-    while (end < len) {
-        Py_UCS4 fb = PyUnicode_READ(kind, data, end);
-        end++;
-        if (fb >= 0x40 && fb <= 0x7E) break;
-    }
-    return end;
-}
-
-/* Skip any escape sequence starting at pos.  Always advances past the
-   sequence — unlike skip_csi, never returns pos unchanged. */
+/* Skip any escape sequence starting at pos (Unicode).  Always advances
+   past the sequence. */
 static inline Py_ssize_t skip_escape(const void *data, int kind,
                                       Py_ssize_t pos, Py_ssize_t len) {
     if (pos + 1 >= len) return pos + 1;
@@ -266,22 +278,28 @@ static inline int is_plain_ascii(PyObject *s) {
 
 /* Build a Python string of n spaces. */
 static PyObject *make_spaces(int n) {
-    char *buf = (char *)malloc(n);
-    if (!buf) return PyErr_NoMemory();
-    memset(buf, ' ', n);
-    PyObject *result = PyUnicode_FromStringAndSize(buf, n);
-    free(buf);
-    return result;
+    PyObject *s = PyUnicode_New(n, 127);
+    if (!s) return NULL;
+    memset(PyUnicode_1BYTE_DATA(s), ' ', (size_t)n);
+    return s;
 }
 
 /* ── SGR output ────────────────────────────────────────────────────── */
 
-static void emit_color(char *tmp, int *n, int sz, Color c, int is_bg) {
-    int base = is_bg ? 48 : 38;
+static void emit_color(char *tmp, int *n, Color c, int is_bg) {
+    if (c.kind == COLOR_NONE) return;
+    tmp[(*n)++] = ';';
+    *n += uint_to_str(is_bg ? 48 : 38, tmp + *n);
     if (c.kind == COLOR_INDEXED) {
-        *n += snprintf(tmp + *n, sz - *n, ";%d;5;%u", base, c.r);
-    } else if (c.kind == COLOR_RGB) {
-        *n += snprintf(tmp + *n, sz - *n, ";%d;2;%u;%u;%u", base, c.r, c.g, c.b);
+        memcpy(tmp + *n, ";5;", 3); *n += 3;
+        *n += uint_to_str(c.r, tmp + *n);
+    } else {
+        memcpy(tmp + *n, ";2;", 3); *n += 3;
+        *n += uint_to_str(c.r, tmp + *n);
+        tmp[(*n)++] = ';';
+        *n += uint_to_str(c.g, tmp + *n);
+        tmp[(*n)++] = ';';
+        *n += uint_to_str(c.b, tmp + *n);
     }
 }
 
@@ -290,21 +308,22 @@ static void emit_sgr(OutBuf *b, Style style) {
         outbuf_add(b, "\033[0m", 4);
         return;
     }
-    uint16_t f = style.flags;
 
-    char tmp[96];
-    int n = snprintf(tmp, sizeof(tmp), "\033[0");
-    if (f & FLAG_BOLD)          n += snprintf(tmp + n, sizeof(tmp) - n, ";1");
-    if (f & FLAG_DIM)           n += snprintf(tmp + n, sizeof(tmp) - n, ";2");
-    if (f & FLAG_ITALIC)        n += snprintf(tmp + n, sizeof(tmp) - n, ";3");
-    if (f & FLAG_UNDERLINE)     n += snprintf(tmp + n, sizeof(tmp) - n, ";4");
-    if (f & FLAG_BLINK)         n += snprintf(tmp + n, sizeof(tmp) - n, ";5");
-    if (f & FLAG_REVERSE)       n += snprintf(tmp + n, sizeof(tmp) - n, ";7");
-    if (f & FLAG_INVISIBLE)     n += snprintf(tmp + n, sizeof(tmp) - n, ";8");
-    if (f & FLAG_STRIKETHROUGH) n += snprintf(tmp + n, sizeof(tmp) - n, ";9");
-    if (f & FLAG_OVERLINE)      n += snprintf(tmp + n, sizeof(tmp) - n, ";53");
-    emit_color(tmp, &n, sizeof(tmp), style.fg, 0);
-    emit_color(tmp, &n, sizeof(tmp), style.bg, 1);
+    char tmp[64];
+    memcpy(tmp, "\033[0", 3);
+    int n = 3;
+    uint16_t f = style.flags;
+    if (f & FLAG_BOLD)          { tmp[n++] = ';'; tmp[n++] = '1'; }
+    if (f & FLAG_DIM)           { tmp[n++] = ';'; tmp[n++] = '2'; }
+    if (f & FLAG_ITALIC)        { tmp[n++] = ';'; tmp[n++] = '3'; }
+    if (f & FLAG_UNDERLINE)     { tmp[n++] = ';'; tmp[n++] = '4'; }
+    if (f & FLAG_BLINK)         { tmp[n++] = ';'; tmp[n++] = '5'; }
+    if (f & FLAG_REVERSE)       { tmp[n++] = ';'; tmp[n++] = '7'; }
+    if (f & FLAG_INVISIBLE)     { tmp[n++] = ';'; tmp[n++] = '8'; }
+    if (f & FLAG_STRIKETHROUGH) { tmp[n++] = ';'; tmp[n++] = '9'; }
+    if (f & FLAG_OVERLINE)      { memcpy(tmp + n, ";53", 3); n += 3; }
+    emit_color(tmp, &n, style.fg, 0);
+    emit_color(tmp, &n, style.bg, 1);
     tmp[n++] = 'm';
     outbuf_add(b, tmp, (size_t)n);
 }

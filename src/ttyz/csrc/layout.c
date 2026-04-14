@@ -155,8 +155,7 @@ static PyObject *mod_pad_columns(PyObject *self, PyObject *args) {
 
     for (Py_ssize_t i = 0; i < n; i++) {
         if (i > 0)
-            for (int s = 0; s < spacing; s++)
-                outbuf_add(&ob, " ", 1);
+            outbuf_spaces(&ob, spacing);
 
         long cw = PyLong_AsLong(PyList_GET_ITEM(widths, i));
         if (cw < 0) cw = 0;
@@ -171,7 +170,6 @@ static PyObject *mod_pad_columns(PyObject *self, PyObject *args) {
             char u8[4];
 
             if (ch == 0x1B) {
-                /* Copy escape sequence verbatim (doesn't count as visible). */
                 Py_ssize_t end = skip_escape(data, kind, j, clen);
                 for (Py_ssize_t k = j; k < end; k++) {
                     Py_UCS4 ec = PyUnicode_READ(kind, data, k);
@@ -187,9 +185,7 @@ static PyObject *mod_pad_columns(PyObject *self, PyObject *args) {
             }
         }
 
-        /* Pad to column width. */
-        for (int g = vis; g < (int)cw; g++)
-            outbuf_add(&ob, " ", 1);
+        outbuf_spaces(&ob, (int)cw - vis);
     }
 
     return outbuf_to_pystr(&ob);
@@ -215,16 +211,12 @@ static PyObject *mod_flex_distribute(PyObject *self, PyObject *args) {
 
     Py_ssize_t n = PyList_GET_SIZE(bases);
 
-    /* Build col_widths, collect grow weights. */
-    long *col_widths = (long *)malloc(n * sizeof(long));
-    if (!col_widths) return PyErr_NoMemory();
-
-    long *grow_idx = (long *)malloc(n * sizeof(long));
-    long *grow_wt  = (long *)malloc(n * sizeof(long));
-    if (!grow_idx || !grow_wt) {
-        free(col_widths); free(grow_idx); free(grow_wt);
-        return PyErr_NoMemory();
-    }
+    /* Build col_widths, collect grow weights (single allocation). */
+    long *buf = (long *)malloc(3 * (size_t)n * sizeof(long));
+    if (!buf) return PyErr_NoMemory();
+    long *col_widths = buf;
+    long *grow_idx   = buf + n;
+    long *grow_wt    = buf + 2 * n;
 
     Py_ssize_t ng = 0;
     long used = 0;
@@ -260,13 +252,11 @@ static PyObject *mod_flex_distribute(PyObject *self, PyObject *args) {
 
     /* Build result list. */
     PyObject *result = PyList_New(n);
-    if (!result) { free(col_widths); free(grow_idx); free(grow_wt); return NULL; }
+    if (!result) { free(buf); return NULL; }
     for (Py_ssize_t i = 0; i < n; i++)
         PyList_SET_ITEM(result, i, PyLong_FromLong(col_widths[i]));
 
-    free(col_widths);
-    free(grow_idx);
-    free(grow_wt);
+    free(buf);
     return result;
 }
 
