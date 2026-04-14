@@ -36,12 +36,23 @@ def _escape_end(line: str, pos: int) -> int:
     n = len(line)
     if pos + 1 >= n:
         return pos
-    if line[pos + 1] == "[":
+    nxt = line[pos + 1]
+    if nxt == "[":
         # CSI: ESC [ ... final_byte (0x40-0x7E)
         end = pos + 2
         while end < n and not ("\x40" <= line[end] <= "\x7e"):
             end += 1
         return end + 1 if end < n else pos
+    if nxt == "]":
+        # OSC: ESC ] ... terminated by BEL or ST (ESC \)
+        end = pos + 2
+        while end < n:
+            if line[end] == "\x07":
+                return end + 1
+            if line[end] == "\033" and end + 1 < n and line[end + 1] == "\\":
+                return end + 2
+            end += 1
+        return end
     # Other ESC sequence: skip ESC + next byte
     return pos + 2
 

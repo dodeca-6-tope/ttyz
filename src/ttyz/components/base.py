@@ -21,12 +21,12 @@ import os
 from collections.abc import Callable
 from typing import TypeAlias
 
+from ttyz.screen import clip_and_pad, pad
+
 RenderFn: TypeAlias = Callable[..., list[str]]
 
 
 def _clip_overflow(lines: list[str], width: int) -> list[str]:
-    from ttyz.screen import clip_and_pad
-
     return [clip_and_pad(l, width) for l in lines]
 
 
@@ -84,11 +84,12 @@ class Renderable:
                 lines = inner(cw, ch)
                 if rw is not None and clips:
                     lines = _clip_overflow(lines, cw)
-                if rh is not None:
-                    lines = _fit_height(lines, rh, clips)
+                target_h = rh
+                if target_h is None and bg is not None:
+                    target_h = ch
+                if target_h is not None:
+                    lines = _fit_height(lines, target_h, clips)
                 if bg is not None:
-                    if ch is not None and len(lines) < ch:
-                        lines = lines + [""] * (ch - len(lines))
                     lines = _apply_bg(lines, bg, cw)
                 return lines
 
@@ -104,8 +105,6 @@ class Renderable:
 
 
 def _apply_bg(lines: list[str], color: int, width: int) -> list[str]:
-    from ttyz.screen import pad
-
     bg = f"\033[48;5;{color}m"
     reset = "\033[0m"
     return [
