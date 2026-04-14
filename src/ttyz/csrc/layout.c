@@ -24,15 +24,22 @@ static PyObject *mod_place_at_offsets(PyObject *self, PyObject *arg) {
     Py_ssize_t n = PyList_GET_SIZE(arg);
     if (n == 0) return PyUnicode_FromString("");
 
+    /* Validate items are tuples of length >= 3. */
+    for (Py_ssize_t i = 0; i < n; i++) {
+        PyObject *item = PyList_GET_ITEM(arg, i);
+        if (!PyTuple_Check(item) || PyTuple_GET_SIZE(item) < 3) {
+            PyErr_SetString(PyExc_TypeError,
+                            "each item must be a tuple (offset, col_width, content)");
+            return NULL;
+        }
+    }
+
     /* First pass: compute total output width from last item. */
     PyObject *last = PyList_GET_ITEM(arg, n - 1);
-    long last_off, last_cw;
-    {
-        PyObject *py_off = PyTuple_GET_ITEM(last, 0);
-        PyObject *py_cw  = PyTuple_GET_ITEM(last, 1);
-        last_off = PyLong_AsLong(py_off);
-        last_cw  = PyLong_AsLong(py_cw);
-    }
+    long last_off = PyLong_AsLong(PyTuple_GET_ITEM(last, 0));
+    long last_cw  = PyLong_AsLong(PyTuple_GET_ITEM(last, 1));
+    if (last_off < 0) last_off = 0;
+    if (last_cw < 0) last_cw = 0;
     Py_ssize_t total = last_off + last_cw;
 
     /* Allocate UCS-1 (ASCII) buffer filled with spaces. */
@@ -88,13 +95,25 @@ static PyObject *mod_pad_columns(PyObject *self, PyObject *args) {
     if (!PyArg_ParseTuple(args, "OOi", &cells, &widths, &spacing))
         return NULL;
 
+    if (!PyList_Check(cells) || !PyList_Check(widths)) {
+        PyErr_SetString(PyExc_TypeError, "cells and col_widths must be lists");
+        return NULL;
+    }
+
     Py_ssize_t n = PyList_GET_SIZE(cells);
     if (n == 0) return PyUnicode_FromString("");
 
-    /* Compute total output length. */
+    if (PyList_GET_SIZE(widths) != n) {
+        PyErr_SetString(PyExc_ValueError,
+                        "cells and col_widths must have the same length");
+        return NULL;
+    }
+
+    /* Compute total output length (clamp negative widths to 0). */
     Py_ssize_t total = 0;
     for (Py_ssize_t i = 0; i < n; i++) {
-        total += PyLong_AsLong(PyList_GET_ITEM(widths, i));
+        long w = PyLong_AsLong(PyList_GET_ITEM(widths, i));
+        total += w > 0 ? w : 0;
         if (i > 0) total += spacing;
     }
 
@@ -118,10 +137,12 @@ static PyObject *mod_pad_columns(PyObject *self, PyObject *args) {
         for (Py_ssize_t i = 0; i < n; i++) {
             if (i > 0) pos += spacing;  /* spacing already spaces via memset */
             long cw = PyLong_AsLong(PyList_GET_ITEM(widths, i));
+            if (cw < 0) cw = 0;
             PyObject *cell = PyList_GET_ITEM(cells, i);
             Py_ssize_t clen = PyUnicode_GET_LENGTH(cell);
             Py_ssize_t copy = clen < cw ? clen : cw;
-            memcpy(buf + pos, PyUnicode_1BYTE_DATA(cell), copy);
+            if (copy > 0)
+                memcpy(buf + pos, PyUnicode_1BYTE_DATA(cell), copy);
             pos += cw;
         }
         return out;
@@ -138,6 +159,7 @@ static PyObject *mod_pad_columns(PyObject *self, PyObject *args) {
                 outbuf_add(&ob, " ", 1);
 
         long cw = PyLong_AsLong(PyList_GET_ITEM(widths, i));
+        if (cw < 0) cw = 0;
         PyObject *cell = PyList_GET_ITEM(cells, i);
         Py_ssize_t clen = PyUnicode_GET_LENGTH(cell);
         int kind = PyUnicode_KIND(cell);

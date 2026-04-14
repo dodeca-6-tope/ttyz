@@ -5,11 +5,12 @@
 3. Diff only outputs when content changed
 4. Different styles are distinguishable by diff
 5. Non-CSI escape sequences don't cause hangs or corrupt output
+6. Standard/bright ANSI colors and partial SGR resets are parsed
 """
 
 import pytest
 
-from ttyz.ext import Buffer
+from ttyz.ext import Buffer, pad_columns, place_at_offsets
 from ttyz.style import (
     bg,
     bg_rgb,
@@ -277,3 +278,123 @@ def test_hstack_ansi_ascii_same_width():
     ascii_w = display_width(strip_ansi(pad_columns(["hello world"], [5], 0)))
     ansi_w = display_width(strip_ansi(pad_columns([bold("hello world")], [5], 0)))
     assert ascii_w == ansi_w
+
+
+# ── Standard ANSI colors ────────────────────────────────────────────
+
+
+@pytest.mark.parametrize("code", range(30, 38))
+def test_standard_fg_color(code):
+    assert _styled_differs_from_plain(f"\x1b[{code}mhi\x1b[0m", "hi")
+
+
+@pytest.mark.parametrize("code", range(40, 48))
+def test_standard_bg_color(code):
+    assert _styled_differs_from_plain(f"\x1b[{code}mhi\x1b[0m", "hi")
+
+
+@pytest.mark.parametrize("code", range(90, 98))
+def test_bright_fg_color(code):
+    assert _styled_differs_from_plain(f"\x1b[{code}mhi\x1b[0m", "hi")
+
+
+@pytest.mark.parametrize("code", range(100, 108))
+def test_bright_bg_color(code):
+    assert _styled_differs_from_plain(f"\x1b[{code}mhi\x1b[0m", "hi")
+
+
+# ── SGR partial resets ───────────────────────────────────────────────
+
+
+def _reset_clears(set_code, reset_code):
+    """A should be styled, B should match plain after reset."""
+    styled = _buf([f"\x1b[{set_code}mA\x1b[{reset_code}mB"])
+    plain = _buf(["AB"])
+    diff = styled.diff(plain)
+    return "A" in diff
+
+
+def test_reset_bold_dim():
+    assert _reset_clears(1, 22)
+    assert _reset_clears(2, 22)
+
+
+def test_reset_italic():
+    assert _reset_clears(3, 23)
+
+
+def test_reset_underline():
+    assert _reset_clears(4, 24)
+
+
+def test_reset_blink():
+    assert _reset_clears(5, 25)
+
+
+def test_reset_reverse():
+    assert _reset_clears(7, 27)
+
+
+def test_reset_invisible():
+    assert _reset_clears(8, 28)
+
+
+def test_reset_strikethrough():
+    assert _reset_clears(9, 29)
+
+
+def test_reset_overline():
+    assert _reset_clears(53, 55)
+
+
+def test_reset_fg_color():
+    styled = _buf(["\x1b[31mA\x1b[39mB"])
+    plain = _buf(["AB"])
+    assert "A" in styled.diff(plain)
+
+
+def test_reset_bg_color():
+    styled = _buf(["\x1b[42mA\x1b[49mB"])
+    plain = _buf(["AB"])
+    assert "A" in styled.diff(plain)
+
+
+# ── pad_columns validation ───────────────────────────────────────────
+
+
+def test_pad_columns_mismatched_lengths():
+    with pytest.raises(ValueError):
+        pad_columns(["a"], [], 0)
+
+
+def test_pad_columns_non_list_cells():
+    with pytest.raises(TypeError):
+        pad_columns("a", [1], 0)
+
+
+def test_pad_columns_non_list_widths():
+    with pytest.raises(TypeError):
+        pad_columns(["a"], 1, 0)
+
+
+def test_pad_columns_negative_width():
+    result = pad_columns(["a"], [-1], 0)
+    assert isinstance(result, str)
+
+
+# ── place_at_offsets validation ──────────────────────────────────────
+
+
+def test_place_at_offsets_non_tuple():
+    with pytest.raises(TypeError):
+        place_at_offsets(["not a tuple"])
+
+
+def test_place_at_offsets_short_tuple():
+    with pytest.raises(TypeError):
+        place_at_offsets([(0,)])
+
+
+def test_place_at_offsets_negative_width():
+    result = place_at_offsets([(0, -1, "abc")])
+    assert isinstance(result, str)

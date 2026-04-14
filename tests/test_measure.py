@@ -141,3 +141,57 @@ def test_distribute_zero_total():
 
 def test_distribute_empty_weights():
     assert distribute(100, []) == []
+
+
+# ── OSC handling in strip_ansi ────────────────────────────────────────
+
+OSC_LINK_BEL = "\x1b]8;;https://example.com\x07click\x1b]8;;\x07"
+OSC_LINK_ST = "\x1b]8;;https://example.com\x1b\\click\x1b]8;;\x1b\\"
+
+
+def test_strip_ansi_osc_bel():
+    assert strip_ansi(OSC_LINK_BEL) == "click"
+
+
+def test_strip_ansi_osc_st():
+    assert strip_ansi(OSC_LINK_ST) == "click"
+
+
+def test_strip_ansi_osc_plus_csi():
+    s = "\x1b[1m\x1b]8;;url\x07hi\x1b]8;;\x07\x1b[0m"
+    assert strip_ansi(s) == "hi"
+
+
+def test_strip_ansi_multiple_osc():
+    s = "\x1b]8;;a\x07A\x1b]8;;\x07\x1b]8;;b\x07B\x1b]8;;\x07"
+    assert strip_ansi(s) == "AB"
+
+
+# ── OSC handling in display_width ─────────────────────────────────────
+
+
+def test_display_width_osc_bel():
+    assert display_width(OSC_LINK_BEL) == 5
+
+
+def test_display_width_osc_st():
+    assert display_width(OSC_LINK_ST) == 5
+
+
+# ── OSC handling in truncate ──────────────────────────────────────────
+
+
+def test_truncate_osc_preserves_visible():
+    result = truncate(OSC_LINK_BEL, 3)
+    assert strip_ansi(result) == "cli"
+
+
+def test_truncate_osc_fits():
+    result = truncate(OSC_LINK_BEL, 5)
+    assert strip_ansi(result) == "click"
+
+
+def test_truncate_osc_with_ellipsis():
+    result = truncate(OSC_LINK_BEL, 3, ellipsis=True)
+    stripped = strip_ansi(result)
+    assert len(stripped) <= 3

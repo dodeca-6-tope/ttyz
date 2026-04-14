@@ -147,6 +147,43 @@ static inline int cwidth(Py_UCS4 ch) {
     return w > 0 ? w : 0;
 }
 
+/* ── ASCII escape skipper ─────────────────────────────────────────── */
+
+/* Skip any escape sequence in a raw char buffer starting at src[pos]
+   (which must be ESC).  Handles CSI, OSC (BEL / ST), and other ESC+byte.
+   Returns the position AFTER the sequence. */
+static inline Py_ssize_t skip_escape_ascii(const char *src, Py_ssize_t pos,
+                                            Py_ssize_t len) {
+    if (pos + 1 >= len) return pos + 1;
+    char next = src[pos + 1];
+
+    if (next == '[') {
+        /* CSI: ESC [ ... final_byte (0x40-0x7E) */
+        Py_ssize_t end = pos + 2;
+        while (end < len && !((unsigned char)src[end] >= 0x40 &&
+                              (unsigned char)src[end] <= 0x7E))
+            end++;
+        if (end < len) end++; /* skip final byte */
+        return end;
+    }
+
+    if (next == ']') {
+        /* OSC: ESC ] ... terminated by BEL or ST (ESC \) */
+        Py_ssize_t end = pos + 2;
+        while (end < len) {
+            if (src[end] == 0x07) return end + 1;              /* BEL */
+            if (src[end] == '\033' && end + 1 < len &&
+                src[end + 1] == '\\')
+                return end + 2;                                 /* ST */
+            end++;
+        }
+        return end;
+    }
+
+    /* Other ESC sequence (e.g. ESC ( B): skip ESC + next byte */
+    return pos + 2;
+}
+
 /* ── Unicode helpers ──────────────────────────────────────────────── */
 
 /* Skip a CSI escape sequence (ESC [ ... final_byte) starting at pos.
@@ -329,7 +366,15 @@ static void parse_sgr(const void *data, int kind,
             if (num == 2) { state = 8; goto next; }
             state = 0; break;
         default: /* state 0 */
-            switch (num) {
+            if (num >= 30 && num <= 37) {
+                *fg = (Color){COLOR_INDEXED, (uint8_t)(num - 30), 0, 0};
+            } else if (num >= 40 && num <= 47) {
+                *bg = (Color){COLOR_INDEXED, (uint8_t)(num - 40), 0, 0};
+            } else if (num >= 90 && num <= 97) {
+                *fg = (Color){COLOR_INDEXED, (uint8_t)(num - 90 + 8), 0, 0};
+            } else if (num >= 100 && num <= 107) {
+                *bg = (Color){COLOR_INDEXED, (uint8_t)(num - 100 + 8), 0, 0};
+            } else switch (num) {
             case  0: *fg = COLOR_EMPTY; *bg = COLOR_EMPTY; *flags = 0; break;
             case  1: *flags |= FLAG_BOLD; break;
             case  2: *flags |= FLAG_DIM; break;
@@ -339,7 +384,17 @@ static void parse_sgr(const void *data, int kind,
             case  7: *flags |= FLAG_REVERSE; break;
             case  8: *flags |= FLAG_INVISIBLE; break;
             case  9: *flags |= FLAG_STRIKETHROUGH; break;
+            case 22: *flags &= ~(FLAG_BOLD | FLAG_DIM); break;
+            case 23: *flags &= ~FLAG_ITALIC; break;
+            case 24: *flags &= ~FLAG_UNDERLINE; break;
+            case 25: *flags &= ~FLAG_BLINK; break;
+            case 27: *flags &= ~FLAG_REVERSE; break;
+            case 28: *flags &= ~FLAG_INVISIBLE; break;
+            case 29: *flags &= ~FLAG_STRIKETHROUGH; break;
+            case 39: *fg = COLOR_EMPTY; break;
+            case 49: *bg = COLOR_EMPTY; break;
             case 53: *flags |= FLAG_OVERLINE; break;
+            case 55: *flags &= ~FLAG_OVERLINE; break;
             case 38: state = 1; goto next;
             case 48: state = 3; goto next;
             }

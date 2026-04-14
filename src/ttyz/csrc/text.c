@@ -64,16 +64,8 @@ static PyObject *mod_strip_ansi(PyObject *self, PyObject *arg) {
                 out += esc - pos;
             }
             if (esc >= len) break;
-            /* Skip escape sequence. */
-            if (esc + 1 < len && src[esc + 1] == '[') {
-                pos = esc + 2;
-                while (pos < len && !((unsigned char)src[pos] >= 0x40 &&
-                                      (unsigned char)src[pos] <= 0x7E))
-                    pos++;
-                if (pos < len) pos++; /* skip final byte */
-            } else {
-                pos = esc + 2; /* ESC + next byte */
-            }
+            /* Skip escape sequence (CSI, OSC, or other). */
+            pos = skip_escape_ascii(src, esc, len);
         }
         PyObject *result = PyUnicode_FromStringAndSize(buf, out);
         free(buf);
@@ -278,17 +270,9 @@ static PyObject *mod_truncate(PyObject *self, PyObject *args, PyObject *kw) {
         Py_ssize_t pos = 0;
         while (pos < len) {
             if (src[pos] == '\033') {
-                /* Copy escape verbatim. */
+                /* Copy escape verbatim (CSI, OSC, or other). */
                 Py_ssize_t esc_start = pos;
-                if (pos + 1 < len && src[pos + 1] == '[') {
-                    pos += 2;
-                    while (pos < len && !((unsigned char)src[pos] >= 0x40 &&
-                                          (unsigned char)src[pos] <= 0x7E))
-                        pos++;
-                    if (pos < len) pos++;
-                } else {
-                    pos += 2;
-                }
+                pos = skip_escape_ascii(src, pos, len);
                 memcpy(buf + out, src + esc_start, (size_t)(pos - esc_start));
                 out += pos - esc_start;
             } else {
