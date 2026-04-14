@@ -96,13 +96,16 @@ class Screen:
         size = os.get_terminal_size()
         rows: int = size.lines
         cols: int = size.columns
-        full = rows != self._rows or cols != self._cols or self._prev is None
+        prev = self._prev
 
         buf = Buffer(cols, rows)
         for i, line in enumerate(lines[:rows]):
             buf.parse_line(i, line)
 
-        body = buf.render_full() if full else buf.diff(self._prev)
+        if rows != self._rows or cols != self._cols or prev is None:
+            body = buf.render_full()
+        else:
+            body = buf.diff(prev)
 
         self._write(f"\033[?2026h{body}\033[?2026l".encode())
         self._flush()

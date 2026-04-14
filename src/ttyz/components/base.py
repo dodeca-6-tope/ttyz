@@ -92,8 +92,8 @@ def frame(
     clips = overflow != "visible"
 
     def render(w: int, h: int | None = None) -> list[str]:
-        rw = _resolve(width, w, 0)
-        rh = _resolve(height, h, 1)
+        rw = resolve_size(width, w, 0)
+        rh = resolve_size(height, h, 1)
         cw = min(rw, w) if rw is not None else w
         ch = min(rh, h) if rh is not None and h is not None else (rh or h)
         lines = child.render(cw, ch)
@@ -120,7 +120,7 @@ def _apply_bg(lines: list[str], color: int, width: int) -> list[str]:
     ]
 
 
-def _resolve(value: str | None, parent: int | None, axis: int) -> int | None:
+def resolve_size(value: str | None, parent: int | None, axis: int) -> int | None:
     if value is None:
         return None
     if value.endswith("%"):

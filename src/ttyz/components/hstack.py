@@ -11,7 +11,7 @@ Three render tiers (cheapest first):
 
 from __future__ import annotations
 
-from ttyz.components.base import Renderable, frame
+from ttyz.components.base import Renderable, frame, resolve_size
 from ttyz.ext import flex_distribute, pad_columns, place_at_offsets
 from ttyz.measure import display_width, distribute
 from ttyz.screen import pad
@@ -75,7 +75,8 @@ def _flex_distribute(
     weights: list[tuple[int, int]] = []
     for i in range(n):
         c = act[i]
-        col_widths[i] = c.flex_basis
+        resolved = resolve_size(c.width, w, 0)
+        col_widths[i] = c.flex_basis if resolved is None else resolved
         if c.width is None and c.grow:
             weights.append((i, c.grow))
     remaining = max(0, w - sum(col_widths) - spacing * max(0, n - 1))
@@ -237,7 +238,7 @@ def hstack(
             if not act:
                 return [""] * h if h else [""]
             col_widths, remaining = _flex_distribute(act, w, spacing)
-            columns = []
+            columns: list[list[str]] = []
             for i, c in enumerate(act):
                 cw = w if c.width is not None else col_widths[i]
                 columns.append(c.render(cw, h) if c.grow else c.render(cw))

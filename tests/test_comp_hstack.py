@@ -16,6 +16,12 @@ def test_spacing():
     assert vis(hstack(text("a"), text("b"), spacing=3).render(20)) == ["a···b"]
 
 
+def test_percentage_width_reserves_column_space():
+    assert vis(hstack(text("A", width="50%"), text("B"), spacing=1).render(20)) == [
+        "A··········B",
+    ]
+
+
 def test_cond_false_invisible():
     assert vis(hstack(cond(False, text("gone")), text("here")).render(80)) == ["here"]
 
