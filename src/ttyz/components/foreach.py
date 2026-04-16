@@ -21,11 +21,9 @@ def foreach(
     render_fn: Callable[[T, int], Node],
     width: str | None = None,
     height: str | None = None,
-    grow: int | None = None,
+    grow: int = 0,
     bg: int | None = None,
     overflow: str = "visible",
 ) -> Foreach:
     children = tuple(render_fn(item, i) for i, item in enumerate(items))
-    return Foreach(
-        children, grow if grow is not None else 0, width, height, bg, overflow
-    )
+    return Foreach(children, grow, width, height, bg, overflow)

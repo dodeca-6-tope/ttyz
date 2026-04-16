@@ -254,11 +254,11 @@ def input(
     active: bool = True,
     width: str | None = None,
     height: str | None = None,
-    grow: int | None = None,
+    grow: int = 0,
     bg: int | None = None,
     overflow: str = "visible",
 ) -> Input:
-    node = Input((), grow if grow is not None else 0, width, height, bg, overflow)
+    node = Input((), grow, width, height, bg, overflow)
     node.buffer = ti
     node.placeholder = placeholder
     node.active = active

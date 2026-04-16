@@ -18,15 +18,13 @@ def vstack(
     spacing: int = 0,
     width: str | None = None,
     height: str | None = None,
-    grow: int | None = None,
+    grow: int = 0,
     bg: int | None = None,
     overflow: str = "visible",
 ) -> VStack:
     has_flex = any(c.grow or c.height is not None for c in children)
 
-    node = VStack(
-        children, grow if grow is not None else 0, width, height, bg, overflow
-    )
+    node = VStack(children, grow, width, height, bg, overflow)
     node.spacing = spacing
     node.has_flex = has_flex
     return node

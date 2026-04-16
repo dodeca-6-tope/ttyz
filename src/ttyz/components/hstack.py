@@ -26,7 +26,7 @@ def hstack(
     wrap: bool = False,
     width: str | None = None,
     height: str | None = None,
-    grow: int | None = None,
+    grow: int = 0,
     bg: int | None = None,
     overflow: str = "visible",
 ) -> HStack:
@@ -35,9 +35,7 @@ def hstack(
     if align_items not in _ALIGN_ITEMS:
         raise ValueError(f"unknown align_items {align_items!r}")
 
-    node = HStack(
-        children, grow if grow is not None else 0, width, height, bg, overflow
-    )
+    node = HStack(children, grow, width, height, bg, overflow)
     node.spacing = spacing
     node.justify_content = justify_content
     node.align_items = align_items

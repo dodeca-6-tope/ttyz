@@ -24,7 +24,7 @@ def text(
     padding: int | tuple[int, int] = 0,
     width: str | None = None,
     height: str | None = None,
-    grow: int | None = None,
+    grow: int = 0,
     bg: int | None = None,
     overflow: str = "visible",
 ) -> Text:
@@ -33,7 +33,7 @@ def text(
     else:
         pl = pr = padding
 
-    node = Text((), grow if grow is not None else 0, width, height, bg, overflow)
+    node = Text((), grow, width, height, bg, overflow)
     node.value = value
     node.pl = pl
     node.pr = pr

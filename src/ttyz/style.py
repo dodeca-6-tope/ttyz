@@ -1,57 +1,61 @@
 """ANSI styling helpers — thin wrappers that produce escape codes."""
 
 
+def _wrap(on: str, off: str, s: str) -> str:
+    return f"\033[{on}m{s}\033[{off}m"
+
+
 def bold(s: str) -> str:
-    return f"\033[1m{s}\033[22m"
+    return _wrap("1", "22", s)
 
 
 def dim(s: str) -> str:
-    return f"\033[2m{s}\033[22m"
+    return _wrap("2", "22", s)
 
 
 def italic(s: str) -> str:
-    return f"\033[3m{s}\033[23m"
+    return _wrap("3", "23", s)
 
 
 def underline(s: str) -> str:
-    return f"\033[4m{s}\033[24m"
+    return _wrap("4", "24", s)
 
 
 def blink(s: str) -> str:
-    return f"\033[5m{s}\033[25m"
+    return _wrap("5", "25", s)
 
 
 def reverse(s: str) -> str:
-    return f"\033[7m{s}\033[27m"
+    return _wrap("7", "27", s)
 
 
 def invisible(s: str) -> str:
-    return f"\033[8m{s}\033[28m"
+    return _wrap("8", "28", s)
 
 
 def strikethrough(s: str) -> str:
-    return f"\033[9m{s}\033[29m"
+    return _wrap("9", "29", s)
 
 
 def overline(s: str) -> str:
-    return f"\033[53m{s}\033[55m"
+    return _wrap("53", "55", s)
 
 
 def color(c: int, s: str) -> str:
     """Apply 256-color foreground."""
-    return f"\033[38;5;{c}m{s}\033[39m"
+    return _wrap(f"38;5;{c}", "39", s)
 
 
 def bg(c: int, s: str) -> str:
     """Apply 256-color background."""
-    return f"\033[48;5;{c}m{s}\033[49m"
+    return _wrap(f"48;5;{c}", "49", s)
 
 
 def rgb(r: int, g: int, b: int, s: str) -> str:
     """Apply 24-bit true-color foreground."""
-    return f"\033[38;2;{r};{g};{b}m{s}\033[39m"
+    return _wrap(f"38;2;{r};{g};{b}", "39", s)
 
 
 def bg_rgb(r: int, g: int, b: int, s: str) -> str:
     """Apply 24-bit true-color background."""
-    return f"\033[48;2;{r};{g};{b}m{s}\033[49m"
+    return _wrap(f"48;2;{r};{g};{b}", "49", s)
