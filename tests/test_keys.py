@@ -155,6 +155,32 @@ def test_paste_converts_cr():
     assert result.text == "line1\nline2"
 
 
+def test_paste_split_across_reads():
+    """End marker arrives in a separate read — must not busy-loop."""
+    import threading
+    import time
+
+    r, w = os.pipe()
+    kr = KeyReader(r)
+
+    def delayed_write():
+        # First chunk: start marker + content (no end marker)
+        os.write(w, b"\x1b[200~hello ")
+        time.sleep(0.02)
+        # Second chunk: rest of content + end marker
+        os.write(w, b"world\x1b[201~")
+
+    t = threading.Thread(target=delayed_write)
+    t.start()
+    result = kr.read(timeout=1.0)
+    t.join()
+    os.close(r)
+    os.close(w)
+
+    assert isinstance(result, Paste)
+    assert result.text == "hello world"
+
+
 # ── Kitty keyboard protocol ─────────────────────────────────────────
 
 

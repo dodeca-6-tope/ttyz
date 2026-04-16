@@ -1,159 +1,111 @@
 """Tests for Box component."""
 
-from helpers import vis
+from conftest import SnapFn
 
-from ttyz import bold, box, scroll, text, vstack
+from ttyz import (
+    bold,
+    box,
+    scroll,
+    text,
+    vstack,
+    zstack,
+)
 from ttyz.components.scroll import ScrollState
 
 # ── Border styles ────────────────────────────────────────────────────
 
 
-def test_basic_rounded():
-    assert vis(box(text("hello")).render(20)) == [
-        "╭─────╮",
-        "│hello│",
-        "╰─────╯",
-    ]
+def test_basic_rounded(snap: SnapFn):
+    snap(box(text("hello")), 20)
 
 
-def test_basic_normal():
-    assert vis(box(text("hi"), style="normal").render(20)) == [
-        "┌──┐",
-        "│hi│",
-        "└──┘",
-    ]
+def test_basic_normal(snap: SnapFn):
+    snap(box(text("hi"), style="normal"), 20)
 
 
-def test_basic_double():
-    assert vis(box(text("hi"), style="double").render(20)) == [
-        "╔══╗",
-        "║hi║",
-        "╚══╝",
-    ]
+def test_basic_double(snap: SnapFn):
+    snap(box(text("hi"), style="double"), 20)
 
 
-def test_basic_heavy():
-    assert vis(box(text("hi"), style="heavy").render(20)) == [
-        "┏━━┓",
-        "┃hi┃",
-        "┗━━┛",
-    ]
+def test_basic_heavy(snap: SnapFn):
+    snap(box(text("hi"), style="heavy"), 20)
 
 
 # ── Title ────────────────────────────────────────────────────────────
 
 
-def test_title():
-    assert vis(box(text("body"), title="Title").render(20)) == [
-        "╭·Title·╮",
-        "│body···│",
-        "╰───────╯",
-    ]
+def test_title(snap: SnapFn):
+    snap(box(text("body"), title="Title"), 20)
 
 
-def test_title_truncated():
-    lines = vis(box(text("x"), title="A Very Long Title That Overflows").render(15))
-    assert lines == [
-        "╭·A·Very·Lon…·╮",
-        "│x············│",
-        "╰─────────────╯",
-    ]
+def test_title_truncated(snap: SnapFn):
+    snap(box(text("x"), title="A Very Long Title That Overflows"), 15)
 
 
-def test_title_starts_after_corner():
-    #              ╭ T ─╮   (no leading dash before title)
-    assert vis(box(text("body"), title="T").render(20)) == [
-        "╭·T·─╮",
-        "│body│",
-        "╰────╯",
-    ]
+def test_title_starts_after_corner(snap: SnapFn):
+    snap(box(text("body"), title="T"), 20)
 
 
 # ── Content ──────────────────────────────────────────────────────────
 
 
-def test_multiline_child():
+def test_multiline_child(snap: SnapFn):
     child = vstack(text("one"), text("two"), text("three"))
-    assert vis(box(child).render(20)) == [
-        "╭─────╮",
-        "│one··│",
-        "│two··│",
-        "│three│",
-        "╰─────╯",
-    ]
+    snap(box(child), 20)
 
 
-def test_content_padded_to_width():
-    lines = vis(box(text("hi")).render(20))
-    widths = {len(l) for l in lines}
-    assert len(widths) == 1
+def test_content_padded_to_width(snap: SnapFn):
+    snap(box(text("hi")), 20)
 
 
-def test_empty_child():
-    assert vis(box(text("")).render(10)) == [
-        "╭╮",
-        "││",
-        "╰╯",
-    ]
+def test_empty_child(snap: SnapFn):
+    snap(box(text("")), 10)
 
 
-def test_narrow_width():
+def test_narrow_width(snap: SnapFn):
     """Box at minimum width (just borders) shouldn't crash."""
-    assert vis(box(text("hello")).render(2)) == [
-        "╭╮",
-        "││",
-        "╰╯",
-    ]
+    snap(box(text("hello")), 2)
 
 
-def test_content_clipped_to_inner_width():
-    assert vis(box(text("a long line of text")).render(10)) == [
-        "╭────────╮",
-        "│a·long·l│",
-        "╰────────╯",
-    ]
+def test_content_clipped_to_inner_width(snap: SnapFn):
+    snap(box(text("a long line of text")), 10)
 
 
-def test_content_clip_preserves_ansi():
-    raw = box(text(bold("a long line"))).render(10)
-    content_line = raw[1]
-    assert "\033[1m" in content_line
+def test_content_clip_preserves_ansi(snap: SnapFn):
+    snap(box(text(bold("a long line"))), 10)
 
 
 # ── Height ───────────────────────────────────────────────────────────
 
 
-def test_height_passed_to_child():
+def test_height_passed_to_child(snap: SnapFn):
     s = ScrollState()
     b = box(scroll(text("a"), text("b"), text("c"), text("d"), state=s))
-    assert vis(b.render(20, 5)) == [
-        "╭──────────────────╮",
-        "│a·················│",
-        "│b·················│",
-        "│c·················│",
-        "╰──────────────────╯",
-    ]
+    snap(b, 20, 5)
 
 
-def test_height_none_unconstrained():
-    assert vis(box(text("hi")).render(20)) == [
-        "╭──╮",
-        "│hi│",
-        "╰──╯",
-    ]
+def test_height_none_unconstrained(snap: SnapFn):
+    snap(box(text("hi")), 20)
 
 
 # ── Flex properties ──────────────────────────────────────────────────
 
 
-def test_flex_basis():
-    assert box(text("hello")).flex_basis == 7  # 5 + 2 borders
-    assert box(text("hello"), padding=1).flex_basis == 9  # 5 + 2 borders + 2 padding
+def test_intrinsic_width(snap: SnapFn):
+    from ttyz import hstack
+
+    snap(hstack(box(text("hello")), text("M")), 20, name="intrinsic_width_basic")
+    snap(
+        hstack(box(text("hello"), padding=1), text("M")),
+        20,
+        name="intrinsic_width_padded",
+    )
 
 
-def test_flex_basis_accounts_for_title():
-    b = box(text("x"), title="Long Title Here")
-    assert b.flex_basis >= len("Long Title Here") + 4
+def test_intrinsic_width_accounts_for_title(snap: SnapFn):
+    from ttyz import hstack
+
+    snap(hstack(box(text("x"), title="Long Title Here"), text("M")), 40)
 
 
 def test_flex_grow_passthrough():
@@ -177,10 +129,10 @@ def test_invalid_style_raises():
         box(text("x"), style="fancy")
 
 
-def test_narrow_box_title_does_not_overflow():
-    from ttyz.measure import display_width
+def test_narrow_box_title_does_not_overflow(snap: SnapFn):
+    snap(box(text(""), title="title"), 4)
 
-    b = box(text(""), title="title")
-    lines = b.render(4)
-    for line in lines:
-        assert display_width(line) <= 4
+
+def test_box_interior_opaque_over_content(snap: SnapFn):
+    """Box must overwrite background content — interior is not transparent."""
+    snap(zstack(text("X" * 20), box(text("hi"))), 20, 5)

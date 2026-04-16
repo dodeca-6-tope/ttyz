@@ -1,100 +1,30 @@
-"""Vertical stack layout component."""
+"""Vertical stack layout component — data class and factory."""
 
 from __future__ import annotations
 
-from ttyz.components.base import Renderable
-from ttyz.measure import distribute
+from ttyz.components.base import Node
 
 
-def _resolve_flex_heights(
-    children: tuple[Renderable, ...] | list[Renderable],
-    w: int,
-    h: int,
-    spacing: int,
-) -> tuple[list[list[str] | None], dict[int, int]]:
-    """Pre-render non-grow children and compute flex-grow row allocations.
+class VStack(Node):
+    """Vertical stack node."""
 
-    Returns (rendered, flex_heights) where rendered[i] is None for grow
-    children and flex_heights maps grow-child indices to heights.
-    """
-    rendered: list[list[str] | None] = []
-    grow_items: list[tuple[int, int]] = []
-    used = spacing * max(0, len(children) - 1)
-
-    for i, c in enumerate(children):
-        if c.grow and c.height is None:
-            grow_items.append((i, c.grow))
-            rendered.append(None)
-        else:
-            lines = c.render(w, h) if c.height is not None else c.render(w)
-            used += len(lines)
-            rendered.append(lines)
-
-    shares = distribute(max(0, h - used), [g for _, g in grow_items])
-    flex_heights = {i: ht for (i, _), ht in zip(grow_items, shares)}
-    return rendered, flex_heights
-
-
-def _virtualize(
-    children: tuple[Renderable, ...], w: int, h: int, spacing: int
-) -> list[str]:
-    """Render children until the viewport is full, then stop early."""
-    lines: list[str] = []
-    for i, child in enumerate(children):
-        remaining = h - len(lines)
-        if i > 0 and spacing:
-            if remaining <= spacing:
-                break
-            lines.extend([""] * spacing)
-            remaining -= spacing
-        rendered = child.render(w)
-        if len(rendered) >= remaining:
-            lines.extend(rendered[:remaining])
-            return lines
-        lines.extend(rendered)
-    return lines
+    __slots__ = ("spacing", "has_flex")
+    spacing: int
+    has_flex: bool
 
 
 def vstack(
-    *children: Renderable,
+    *children: Node,
     spacing: int = 0,
     width: str | None = None,
     height: str | None = None,
     grow: int | None = None,
     bg: int | None = None,
     overflow: str = "visible",
-) -> Renderable:
-    basis = max((c.flex_basis for c in children), default=0)
-    # Build-time check: skip flex allocation when no child uses grow/height.
+) -> VStack:
     has_flex = any(c.grow or c.height is not None for c in children)
 
-    def join(parts: list[list[str]]) -> list[str]:
-        if not spacing:
-            return [line for part in parts for line in part]
-        lines: list[str] = []
-        for i, part in enumerate(parts):
-            if i > 0:
-                lines.extend([""] * spacing)
-            lines.extend(part)
-        return lines
-
-    def render(w: int, h: int | None = None) -> list[str]:
-        if h is None:
-            return join([c.render(w) for c in children])
-        if not children:
-            return [""] * h
-        if not has_flex:
-            return _virtualize(children, w, h, spacing)
-        rendered, flex_heights = _resolve_flex_heights(children, w, h, spacing)
-        return join(
-            [
-                f
-                if (f := rendered[i]) is not None
-                else child.render(w, flex_heights[i])
-                for i, child in enumerate(children)
-            ]
-        )
-
-    return Renderable(
-        render, basis, grow or 0, width=width, height=height, bg=bg, overflow=overflow
-    )
+    node = VStack(children, grow or 0, width, height, bg, overflow)
+    node.spacing = spacing
+    node.has_flex = has_flex
+    return node

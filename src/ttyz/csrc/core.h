@@ -62,7 +62,8 @@ typedef struct {
     Style   style;
 } Cell;
 
-#define BLANK_CELL ((Cell){' ', STYLE_EMPTY})
+#define UNWRITTEN  1   /* ch == 1 marks an unwritten cell */
+#define BLANK_CELL ((Cell){UNWRITTEN, STYLE_EMPTY})
 
 /* ── Growable byte buffer ──────────────────────────────────────────── */
 
@@ -309,7 +310,7 @@ static void emit_sgr(OutBuf *b, Style style) {
         return;
     }
 
-    char tmp[64];
+    char tmp[80];
     memcpy(tmp, "\033[0", 3);
     int n = 3;
     uint16_t f = style.flags;

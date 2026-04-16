@@ -1,54 +1,43 @@
 """Tests for Table component."""
 
-from helpers import vis
+from conftest import SnapFn
 
 from ttyz import table, table_row, text
 
 
-def test_aligns_columns():
+def test_aligns_columns(snap: SnapFn):
     tbl = table(
         table_row(text("a"), text("bb")),
         table_row(text("ccc"), text("d")),
     )
-    assert vis(tbl.render(80)) == [
-        "a···bb",
-        "ccc·d·",
-    ]
+    snap(tbl, 80)
 
 
-def test_single_row():
-    assert vis(table(table_row(text("x"), text("y"))).render(80)) == ["x·y"]
+def test_single_row(snap: SnapFn):
+    snap(table(table_row(text("x"), text("y"))), 80)
 
 
-def test_empty():
-    assert vis(table().render(80)) == [""]
+def test_empty(snap: SnapFn):
+    snap(table(), 80)
 
 
-def test_fill_column():
-    tbl = table(table_row(text("id"), text("long title here", grow=1)))
-    lines = vis(tbl.render(30))
-    assert len(lines[0]) <= 30
+def test_fill_column(snap: SnapFn):
+    snap(table(table_row(text("id"), text("long title here", grow=1))), 30)
 
 
-def test_spacing():
-    assert vis(table(table_row(text("a"), text("b")), spacing=3).render(80)) == [
-        "a···b",
-    ]
+def test_spacing(snap: SnapFn):
+    snap(table(table_row(text("a"), text("b")), spacing=3), 80)
 
 
-def test_jagged_rows():
+def test_jagged_rows(snap: SnapFn):
     tbl = table(
         table_row(text("a"), text("b"), text("c")),
         table_row(text("x")),
     )
-    lines = vis(tbl.render(80))
-    assert lines == [
-        "a·b·c",
-        "x····",
-    ]
+    snap(tbl, 80)
 
 
-def test_multiple_fill_columns():
+def test_multiple_fill_columns(snap: SnapFn):
     tbl = table(
         table_row(
             text("id"),
@@ -56,9 +45,7 @@ def test_multiple_fill_columns():
             text("desc", grow=1),
         )
     )
-    assert vis(tbl.render(42)) == [
-        "id·name················desc···············",
-    ]
+    snap(tbl, 42)
 
 
 # ── flex_grow propagation ───────────────────────────────────────────
@@ -74,10 +61,6 @@ def test_flex_grow_false_without_fill():
     assert not tbl.grow
 
 
-def test_empty_row():
+def test_empty_row(snap: SnapFn):
     """A TableRow with zero cells should render without crashing."""
-    r1 = table_row(text("a"), text("b"))
-    r2 = table_row()
-    t = table(r1, r2)
-    lines = t.render(80)
-    assert len(lines) == 2
+    snap(table(table_row(text("a"), text("b")), table_row()), 80)

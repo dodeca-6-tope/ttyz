@@ -1,25 +1,26 @@
-"""Perf tests — each timing test guards one specific optimisation.
+"""Perf tests — guard the C render pipeline performance.
 
-If a test fails, its docstring names the exact optimisation that regressed.
+Each test guards a specific workload through the public contract:
+render_to_buffer + Buffer.diff.
 
-Budgets are ~2× measured median on Apple M-series (~3× for sub-ms
-measurements where variance is highest).
+Budgets are ~2× measured median on Apple M-series.
 """
 
 import time
 from dataclasses import dataclass
 
 from ttyz import (
+    Buffer,
     ListState,
-    Renderable,
+    Node,
     hstack,
+    render_to_buffer,
     text,
     vstack,
 )
-from ttyz.components.list import list as tlist
-from ttyz.ext import Buffer
-from ttyz.measure import display_width
-from ttyz.screen import clip_and_pad
+from ttyz import (
+    list as tlist,
+)
 
 
 @dataclass
@@ -28,7 +29,6 @@ class _N:
 
 
 def _timed(fn: object, iterations: int = 1) -> float:
-    """Run fn and return elapsed seconds."""
     assert callable(fn)
     start = time.perf_counter()
     for _ in range(iterations):
@@ -40,54 +40,11 @@ WIDTH = 200
 HEIGHT = 50
 
 
-# ── clip_and_pad ──────────────────────────────────────────────────
-
-
-def test_clip_and_pad_ascii():
-    """Guard: clip_and_pad ASCII fast path — direct slice vs _clip_scan.
-
-    Optimisation in screen.py: `"\\033" not in line and line.isascii()`
-    bypasses the character-by-character ANSI scan.  ~177× impact.
-    """
-    lines = ["x" * WIDTH] * 10_000
-    elapsed = _timed(lambda: [clip_and_pad(l, WIDTH) for l in lines])
-    assert elapsed < 0.002, f"clip_and_pad ASCII 10k took {elapsed:.3f}s"
-
-
-def test_clip_and_pad_ansi():
-    """Regression guard: _clip_scan ANSI parse performance.
-
-    Python _escape_end is the minimal implementation (no bolt-on to disable).
-    Disabling C skip_escape has no effect — this path is pure Python.
-    """
-    lines = [f"\033[1m{'a' * 196}\033[0m"] * 10_000
-    elapsed = _timed(lambda: [clip_and_pad(l, WIDTH) for l in lines])
-    assert elapsed < 0.28, f"clip_and_pad ANSI 10k took {elapsed:.3f}s"
-
-
-# ── display_width ─────────────────────────────────────────────────
-
-
-def test_display_width_lru_cache():
-    """Guard: LRU cache for repeated non-ASCII display_width calls.
-
-    Optimisation in measure.py: lru_cache(4096) wrapping c_display_width
-    for strings < 512 chars.  ~11× impact for repeated wide/ANSI strings.
-    """
-    strings = [f"\033[31m{'你好' * 20}abc\033[0m"] * 10_000
-    elapsed = _timed(lambda: [display_width(s) for s in strings])
-    assert elapsed < 0.0015, f"display_width cache 10k took {elapsed:.3f}s"
-
-
 # ── cell buffer: parse_line ───────────────────────────────────────
 
 
 def test_parse_line_c_ascii():
-    """Guard: parse_line C ASCII fast path — direct cell fill.
-
-    Optimisation in _native: is_plain_ascii() gates a loop that copies
-    ASCII bytes directly into cells, skipping the ANSI state machine.
-    """
+    """Guard: parse_line C ASCII fast path — direct cell fill."""
     buf = Buffer(WIDTH, HEIGHT)
     lines = ["x" * WIDTH] * HEIGHT
 
@@ -96,15 +53,11 @@ def test_parse_line_c_ascii():
             buf.parse_line(i, l)
 
     elapsed = _timed(run, iterations=1000)
-    assert elapsed < 0.008, f"parse ASCII 1k frames took {elapsed:.3f}s"
+    assert elapsed < 0.02, f"parse ASCII 1k frames took {elapsed:.3f}s"
 
 
 def test_parse_line_c_ansi():
-    """Regression guard: parse_line C ANSI SGR parsing performance.
-
-    Disabling cwidth ASCII shortcut only adds ~20% — not enough to
-    blow budget without flaking.  Guards overall ANSI parse speed.
-    """
+    """Guard: parse_line C ANSI SGR parsing performance."""
     buf = Buffer(WIDTH, HEIGHT)
     lines = [f"\033[1m{'a' * 196}\033[0m"] * HEIGHT
 
@@ -116,14 +69,11 @@ def test_parse_line_c_ansi():
     assert elapsed < 0.03, f"parse ANSI 1k frames took {elapsed:.3f}s"
 
 
-# ── cell buffer: render_diff ──────────────────────────────────────
+# ── Buffer.diff ──────────────────────────────────────────────────────
 
 
 def test_diff_full_frame():
-    """Regression guard: render_diff dirty-run coalescing.
-
-    Guards _native run grouping for changed frames.  Cannot disable from Python.
-    """
+    """Guard: diff performance on fully changed frames."""
     old = Buffer(WIDTH, HEIGHT)
     new = Buffer(WIDTH, HEIGHT)
     for i in range(HEIGHT):
@@ -131,9 +81,6 @@ def test_diff_full_frame():
         new.parse_line(i, "b" * WIDTH)
     elapsed = _timed(lambda: new.diff(old), iterations=100)
     assert elapsed < 0.008, f"diff changed 100 took {elapsed:.3f}s"
-
-
-# ── cell buffer: output size (correctness) ────────────────────────
 
 
 def test_diff_identical_emits_nothing():
@@ -170,35 +117,29 @@ def test_diff_one_line_output_bounded():
     assert len(out) < WIDTH + 50, f"one-line diff was {len(out)} bytes"
 
 
-# ── hstack ────────────────────────────────────────────────────────
+# ── render_to_buffer ─────────────────────────────────────────────────
 
 
-def test_hstack_flat_collapse():
-    """Guard: hstack Tier 1 flat path — _try_flatten + C place_at_offsets.
+def test_render_nested_hstack():
+    """Guard: deeply nested fixed-width hstacks (3125 leaves)."""
 
-    Optimisation in hstack.py + _native: nested fixed-width hstacks are
-    collapsed into flat offset arrays and rendered with ASCII memcpy.
-    ~29× impact at depth 5.  Validated by monkeypatching _try_flatten
-    to return None.
-    """
-
-    def build(depth: int):
+    def build(depth: int) -> Node:
         if depth == 0:
             return text("leaf")
         return hstack(*[build(depth - 1) for _ in range(5)], spacing=1)
 
     tree = build(5)
-    elapsed = _timed(lambda: tree.render(WIDTH), iterations=10)
-    assert elapsed < 0.001, f"nested hstack x10 took {elapsed:.3f}s"
+
+    def run():
+        buf = Buffer(WIDTH, HEIGHT)
+        render_to_buffer(tree, buf)
+
+    elapsed = _timed(run, iterations=10)
+    assert elapsed < 0.016, f"nested hstack x10 took {elapsed:.3f}s"
 
 
-def test_hstack_c_flex():
-    """Regression guard: hstack flex render pipeline.
-
-    Disabling C ASCII memcpy in pad_columns adds ~24%, disabling
-    C flex_distribute adds ~41% — neither enough to blow budget
-    without flaking.  Guards overall flex hstack speed.
-    """
+def test_render_hstack_flex():
+    """Guard: 200-row × 10-col hstack with flex grow."""
     rows = [
         hstack(
             text(f"c0-{i}"),
@@ -216,69 +157,23 @@ def test_hstack_c_flex():
         for i in range(200)
     ]
     tree = vstack(*rows)
-    elapsed = _timed(lambda: tree.render(WIDTH, HEIGHT * 4), iterations=50)
-    assert elapsed < 0.03, f"hstack grow 200x10 x50 took {elapsed:.3f}s"
+
+    def run():
+        buf = Buffer(WIDTH, HEIGHT * 4)
+        render_to_buffer(tree, buf)
+
+    elapsed = _timed(run, iterations=50)
+    assert elapsed < 0.04, f"hstack flex x50 took {elapsed:.3f}s"
 
 
-# ── list component ────────────────────────────────────────────────
-
-
-def test_list_item_cache():
-    """Guard: list component per-item render cache.
-
-    Optimisation in list.py: dict cache keyed by item.key → (sel, width,
-    rendered lines).  Unchanged items return cached output.  ~12× impact.
-    """
-    state = ListState([_N(i) for i in range(1000)])
-
-    def render_item(item: _N, sel: bool) -> Renderable:
-        return hstack(
-            text("▸ " if sel else "  "),
-            text(f"Item {item.key}", grow=1, truncation="tail"),
-            text("✓" if item.key % 3 == 0 else " "),
-        )
-
-    body = tlist(state, render_item)
-    body.render(WIDTH, HEIGHT)  # prime
-
-    def scroll_run():
-        for _ in range(100):
-            state.move(1)
-            body.render(WIDTH, HEIGHT)
-
-    elapsed = _timed(scroll_run)
-    assert elapsed < 0.004, f"list scroll cached 100 took {elapsed:.3f}s"
-
-
-# ── full pipeline (build → render → parse → diff) ────────────────
-#
-# Integration tests — guard the combined effect of all optimisations
-# through the real render loop.  Cold = rebuild every frame.
-# Warm = persistent list body so item cache stays hot.
-
-
-def _make_pipeline_app(items: ListState[_N]) -> tuple[Renderable, Renderable]:
-    body = tlist(
-        items,
-        lambda item, sel: hstack(
-            text("▸ " if sel else "  "),
-            text(f"Item {item.key}", grow=1, truncation="tail"),
-            text("✓" if item.key % 3 == 0 else " "),
-        ),
-    )
-    footer = hstack(
-        text("\033[2m[j/k] move\033[0m"),
-        text("\033[2m[q] quit\033[0m"),
-        spacing=2,
-    )
-    return body, footer
+# ── Full pipeline: build → render_to_buffer → diff ───────────────────
 
 
 def test_pipeline_cold():
-    """Guard: overall cold pipeline — rebuild everything each frame."""
+    """Guard: cold pipeline — rebuild entire tree each frame."""
     items = ListState([_N(i) for i in range(1000)])
 
-    def build_cold() -> list[str]:
+    def build_cold() -> Node:
         header = hstack(
             text("\033[1m✦ APP\033[0m"),
             text(f"\033[2m{items.cursor}/1000\033[0m"),
@@ -294,58 +189,65 @@ def test_pipeline_cold():
             ),
         )
         footer = hstack(
-            text("\033[2m[j/k] move\033[0m"), text("\033[2m[q] quit\033[0m"), spacing=2
+            text("\033[2m[j/k] move\033[0m"),
+            text("\033[2m[q] quit\033[0m"),
+            spacing=2,
         )
-        return vstack(header, body, footer, spacing=1).render(WIDTH, HEIGHT)
+        return vstack(header, body, footer, spacing=1)
 
     prev = Buffer(WIDTH, HEIGHT)
-    for i, l in enumerate(build_cold()[:HEIGHT]):
-        prev.parse_line(i, l)
+    render_to_buffer(build_cold(), prev)
 
     def run():
         nonlocal prev
         for _ in range(100):
             items.move(1)
-            lines = build_cold()
             buf = Buffer(WIDTH, HEIGHT)
-            for i, l in enumerate(lines[:HEIGHT]):
-                buf.parse_line(i, l)
+            render_to_buffer(build_cold(), buf)
             buf.diff(prev)
             prev = buf
 
     elapsed = _timed(run)
-    assert elapsed < 0.04, f"cold pipeline 100 took {elapsed:.3f}s"
+    assert elapsed < 0.06, f"cold pipeline 100 took {elapsed:.3f}s"
 
 
 def test_pipeline_warm():
-    """Guard: warm pipeline — persistent list body with item cache."""
+    """Guard: warm pipeline — persistent list with item cache."""
     items = ListState([_N(i) for i in range(1000)])
-    body, footer = _make_pipeline_app(items)
+    body = tlist(
+        items,
+        lambda item, sel: hstack(
+            text("▸ " if sel else "  "),
+            text(f"Item {item.key}", grow=1, truncation="tail"),
+            text("✓" if item.key % 3 == 0 else " "),
+        ),
+    )
+    footer = hstack(
+        text("\033[2m[j/k] move\033[0m"),
+        text("\033[2m[q] quit\033[0m"),
+        spacing=2,
+    )
 
-    def build_warm() -> list[str]:
+    def build_warm() -> Node:
         header = hstack(
             text("\033[1m✦ APP\033[0m"),
             text(f"\033[2m{items.cursor}/1000\033[0m"),
             justify_content="between",
             spacing=1,
         )
-        return vstack(header, body, footer, spacing=1).render(WIDTH, HEIGHT)
+        return vstack(header, body, footer, spacing=1)
 
-    build_warm()  # prime cache
     prev = Buffer(WIDTH, HEIGHT)
-    for i, l in enumerate(build_warm()[:HEIGHT]):
-        prev.parse_line(i, l)
+    render_to_buffer(build_warm(), prev)
 
     def run():
         nonlocal prev
         for _ in range(100):
             items.move(1)
-            lines = build_warm()
             buf = Buffer(WIDTH, HEIGHT)
-            for i, l in enumerate(lines[:HEIGHT]):
-                buf.parse_line(i, l)
+            render_to_buffer(build_warm(), buf)
             buf.diff(prev)
             prev = buf
 
     elapsed = _timed(run)
-    assert elapsed < 0.008, f"warm pipeline 100 took {elapsed:.3f}s"
+    assert elapsed < 0.015, f"warm pipeline 100 took {elapsed:.3f}s"

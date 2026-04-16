@@ -1,10 +1,10 @@
-"""Scrollbar — visual indicator for scroll position."""
+"""Scrollbar — data class and factory."""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from ttyz.components.base import Renderable
+from ttyz.components.base import Node
 from ttyz.components.scroll import ScrollState
 from ttyz.style import dim
 
@@ -23,6 +23,14 @@ def scrollbar_default(h: int, total: int, offset: int) -> list[str]:
     return ["┃" if i * 2 < bot2 and (i + 1) * 2 > top2 else dim("│") for i in range(h)]
 
 
+class Scrollbar(Node):
+    """Scrollbar node."""
+
+    __slots__ = ("state", "render_fn")
+    state: ScrollState
+    render_fn: ScrollbarFn
+
+
 def scrollbar(
     state: ScrollState,
     render_fn: ScrollbarFn = scrollbar_default,
@@ -31,19 +39,9 @@ def scrollbar(
     grow: int | None = None,
     bg: int | None = None,
     overflow: str = "visible",
-) -> Renderable:
-    def render(w: int, h: int | None = None) -> list[str]:
-        sh = state.height
-        if sh <= 0 or state.total <= sh:
-            return [""] * (sh or 0)
-        return render_fn(sh, state.total, state.offset)
+) -> Scrollbar:
+    node = Scrollbar((), grow if grow is not None else 1, width, height, bg, overflow)
+    node.state = state
+    node.render_fn = render_fn
 
-    return Renderable(
-        render,
-        1,
-        grow if grow is not None else 1,
-        width=width,
-        height=height,
-        bg=bg,
-        overflow=overflow,
-    )
+    return node

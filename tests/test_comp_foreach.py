@@ -1,31 +1,32 @@
 """Tests for ForEach component."""
 
-from helpers import clean, vis
+from conftest import SnapFn
 
 from ttyz import foreach, text
 
 
-def test_renders_items():
-    assert vis(
-        foreach(["a", "b", "c"], lambda item, i: text(f"{i}:{item}")).render(80)
-    ) == [
-        "0:a",
-        "1:b",
-        "2:c",
-    ]
+def test_renders_items(snap: SnapFn):
+    snap(foreach(["a", "b", "c"], lambda item, i: text(f"{i}:{item}")), 80)
 
 
-def test_empty_list():
+def test_empty_list(snap: SnapFn):
     items: list[str] = []
-    assert foreach(items, lambda item, i: text(item)).render(80) == []
+    snap(foreach(items, lambda item, i: text(item)), 80)
 
 
-def test_flex_basis():
-    assert foreach(["hi", "hello"], lambda item, i: text(item)).flex_basis == 5
+def test_intrinsic_width(snap: SnapFn):
+    """Foreach intrinsic width is max of children."""
+    from ttyz import hstack
+
+    snap(
+        hstack(foreach(["hi", "hello"], lambda item, i: text(item)), text("|")),
+        20,
+    )
 
 
-def test_children_get_outer_height():
+def test_children_get_outer_height(snap: SnapFn):
     """text() children ignore h, so render is the same with or without height."""
     items = ["a", "b", "c"]
     f = foreach(items, lambda item, i: text(item))
-    assert clean(f.render(80)) == clean(f.render(80, 10)) == ["a", "b", "c"]
+    snap(f, 80, name="foreach_height_no_h")
+    snap(f, 80, 10, name="foreach_height_with_h")

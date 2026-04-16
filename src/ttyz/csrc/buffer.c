@@ -1,7 +1,7 @@
 /*
  * buffer.c — Cell-based terminal buffer: ANSI in, ANSI out.
  *
- * Buffer type (2D cell grid) with parse_line, render_full, and diff methods.
+ * Buffer type (2D cell grid) with parse_line, dump, and diff methods.
  */
 
 /* ── Buffer type ───────────────────────────────────────────────────── */
@@ -58,12 +58,61 @@ static PyObject *Buffer_row_text(BufferObject *self, PyObject *args) {
     if (!utf8) return PyErr_NoMemory();
     int len = 0;
     for (int i = 0; i < w; i++) {
-        if (cells[i].ch != WIDE_CHAR)
-            len += encode_utf8(cells[i].ch, utf8 + len);
+        Py_UCS4 ch = cells[i].ch;
+        if (ch == WIDE_CHAR) continue;
+        if (ch == UNWRITTEN) ch = ' ';
+        len += encode_utf8(ch, utf8 + len);
     }
     PyObject *result = PyUnicode_DecodeUTF8(utf8, len, NULL);
     free(utf8);
     return result;
+}
+
+/* ── row_styled — ANSI-styled text for one row ────────────────────── */
+
+static PyObject *Buffer_row_styled(BufferObject *self, PyObject *args) {
+    int row;
+    if (!PyArg_ParseTuple(args, "i", &row)) return NULL;
+    if (row < 0 || row >= self->height) {
+        PyErr_SetString(PyExc_IndexError, "row out of range");
+        return NULL;
+    }
+
+    int w = self->width;
+    Cell *cells = self->cells + row * w;
+
+    /* Find rightmost written cell (strip trailing unwritten cells). */
+    int last = w - 1;
+    while (last >= 0 && cells[last].ch == UNWRITTEN)
+        last--;
+
+    if (last < 0) {
+        /* Entirely blank row. */
+        return PyUnicode_FromStringAndSize("", 0);
+    }
+
+    OutBuf out;
+    if (outbuf_init(&out, (size_t)(last + 1) * 8 + 64) < 0)
+        return PyErr_NoMemory();
+
+    Style active = STYLE_EMPTY;
+    for (int i = 0; i <= last; i++) {
+        Cell c = cells[i];
+        if (c.ch == WIDE_CHAR) continue;
+        if (!style_eq(c.style, active)) {
+            emit_sgr(&out, c.style);
+            active = c.style;
+        }
+        Py_UCS4 ch = (c.ch == UNWRITTEN) ? ' ' : c.ch;
+        char u8[4];
+        int u8len = encode_utf8(ch, u8);
+        outbuf_add(&out, u8, (size_t)u8len);
+    }
+
+    if (!style_is_empty(active))
+        outbuf_add(&out, "\033[0m", 4);
+
+    return outbuf_to_pystr(&out);
 }
 
 /* ── parse_line ────────────────────────────────────────────────────── */
@@ -117,10 +166,12 @@ static PyObject *Buffer_parse_line(BufferObject *self, PyObject *args) {
                     end++;
                     if (fb >= 0x40 && fb <= 0x7E) break;
                 }
-                Py_ssize_t m = pos + 2;
-                while (m < end && PyUnicode_READ(kind, data, m) != 'm') m++;
-                parse_sgr(data, kind, pos + 2, m, &fg, &bg, &flags);
-                style = (Style){fg, bg, flags, {0, 0}};
+                /* Only parse SGR (final byte 'm'); skip other CSI. */
+                if (PyUnicode_READ(kind, data, end - 1) == 'm')  {
+                    parse_sgr(data, kind, pos + 2, end - 1,
+                              &fg, &bg, &flags);
+                    style = (Style){fg, bg, flags, {0, 0}};
+                }
                 pos = end;
             } else {
                 pos = skip_escape(data, kind, pos, len);
@@ -145,9 +196,9 @@ static PyObject *Buffer_parse_line(BufferObject *self, PyObject *args) {
     Py_RETURN_NONE;
 }
 
-/* ── render_full ───────────────────────────────────────────────────── */
+/* ── dump ─────────────────────────────────────────────────────────── */
 
-static PyObject *Buffer_render_full(BufferObject *self, PyObject *args) {
+static PyObject *Buffer_dump(BufferObject *self, PyObject *args) {
     int w = self->width;
     int h = self->height;
     Cell *cells = self->cells;
@@ -169,8 +220,9 @@ static PyObject *Buffer_render_full(BufferObject *self, PyObject *args) {
                 emit_sgr(&out, c.style);
                 active = c.style;
             }
+            Py_UCS4 ch = (c.ch == UNWRITTEN) ? ' ' : c.ch;
             char u8[4];
-            int u8len = encode_utf8(c.ch, u8);
+            int u8len = encode_utf8(ch, u8);
             outbuf_add(&out, u8, (size_t)u8len);
         }
     }
@@ -198,7 +250,6 @@ static PyObject *Buffer_diff(BufferObject *self, PyObject *args) {
     int h = self->height;
     Cell *cc = self->cells;
     Cell *pc = prev->cells;
-    size_t total = (size_t)w * (size_t)h;
 
     OutBuf out;
     if (outbuf_init(&out, 4096) < 0)
@@ -226,8 +277,9 @@ static PyObject *Buffer_diff(BufferObject *self, PyObject *args) {
                 emit_sgr(&out, c.style);
                 active = c.style;
             }
+            Py_UCS4 ch = (c.ch == UNWRITTEN) ? ' ' : c.ch;
             char u8[4];
-            outbuf_add(&out, u8, (size_t)encode_utf8(c.ch, u8));
+            outbuf_add(&out, u8, (size_t)encode_utf8(ch, u8));
             col++;
 
             /* Extend run with adjacent dirty cells */
@@ -240,7 +292,8 @@ static PyObject *Buffer_diff(BufferObject *self, PyObject *args) {
                     emit_sgr(&out, c2.style);
                     active = c2.style;
                 }
-                outbuf_add(&out, u8, (size_t)encode_utf8(c2.ch, u8));
+                Py_UCS4 ch2 = (c2.ch == UNWRITTEN) ? ' ' : c2.ch;
+                outbuf_add(&out, u8, (size_t)encode_utf8(ch2, u8));
                 col++;
             }
         }
@@ -256,8 +309,9 @@ static PyObject *Buffer_diff(BufferObject *self, PyObject *args) {
 
 static PyMethodDef Buffer_methods[] = {
     {"row_text",    (PyCFunction)Buffer_row_text,    METH_VARARGS, "Plain text of a row."},
+    {"row_styled",  (PyCFunction)Buffer_row_styled,  METH_VARARGS, "ANSI-styled text of a row."},
     {"parse_line",  (PyCFunction)Buffer_parse_line,  METH_VARARGS, "Parse ANSI line into a row."},
-    {"render_full", (PyCFunction)Buffer_render_full,  METH_NOARGS,  "Render entire buffer to ANSI."},
+    {"dump",        (PyCFunction)Buffer_dump,          METH_NOARGS,  "Serialize entire buffer to ANSI."},
     {"diff",        (PyCFunction)Buffer_diff,         METH_VARARGS, "Render cell-level diff to ANSI."},
     {NULL}
 };

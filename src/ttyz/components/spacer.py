@@ -1,17 +1,19 @@
-"""Flexible space that expands along the major axis of its containing stack.
-
-If not contained in a stack, it expands on both axes.
-"""
+"""Flexible space that expands along the major axis of its containing stack."""
 
 from __future__ import annotations
 
-from ttyz.components.base import Renderable
+from ttyz.components.base import Node
 
 
-def spacer(min_length: int = 0) -> Renderable:
+class Spacer(Node):
+    """Flexible spacer node."""
+
+    __slots__ = ("min_length",)
+    min_length: int
+
+
+def spacer(min_length: int = 0) -> Spacer:
     """Create a flexible spacer that pushes siblings apart in a stack."""
-
-    def render(w: int, h: int | None = None) -> list[str]:
-        return [""] * h if h is not None else [""]
-
-    return Renderable(render, flex_basis=min_length, grow=1)
+    node = Spacer((), 1)
+    node.min_length = min_length
+    return node

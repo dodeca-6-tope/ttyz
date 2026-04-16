@@ -27,14 +27,14 @@ class S:
     render_times: deque[float] = field(default_factory=lambda: deque(maxlen=60))
 
 
-def _torus(a: float, b: float) -> t.Renderable:
+def _torus(a: float, b: float) -> t.Node:
     def render(width: int, height: int | None = None) -> list[str]:
         return render_torus(a, b, width, height or 20)
 
-    return t.Renderable(render, grow=1)
+    return t.Custom(render, grow=1)
 
 
-def view(s: S) -> t.Renderable:
+def view(s: S) -> t.Node:
     avg = sum(s.render_times) / len(s.render_times) if s.render_times else 0
     fps = 1 / avg if avg > 0 else 0
     fps_color = 2 if fps >= 200 else (3 if fps >= 60 else 1)
@@ -113,7 +113,7 @@ if __name__ == "__main__":
 
             # render
             t0 = time.perf_counter()
-            term.draw(view(s).render(term.size.columns, term.size.lines))
+            term.draw(view(s))
             s.render_times.append(time.perf_counter() - t0)
 
             # input (timeout = remaining frame budget @ ~60fps)

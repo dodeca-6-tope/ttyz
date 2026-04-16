@@ -1,10 +1,9 @@
 """Tests for Scroll component."""
 
-from helpers import clean, vis
+from conftest import SnapFn
 
 from ttyz import box, hstack, scroll, scrollbar, scrollbar_default, text, vstack
 from ttyz.components.scroll import ScrollState
-from ttyz.measure import display_width, strip_ansi
 
 
 def _state(offset: int = 0) -> ScrollState:
@@ -16,136 +15,104 @@ def _state(offset: int = 0) -> ScrollState:
 # ── Basic rendering ──────────────────────────────────────────────────
 
 
-def test_shows_slice_at_offset():
+def test_shows_slice_at_offset(snap: SnapFn):
     s = _state(1)
-    assert clean(
-        scroll(text("a"), text("b"), text("c"), text("d"), text("e"), state=s).render(
-            80, 3
-        )
-    ) == ["b", "c", "d"]
+    snap(scroll(text("a"), text("b"), text("c"), text("d"), text("e"), state=s), 80, 3)
 
 
-def test_offset_zero():
+def test_offset_zero(snap: SnapFn):
     s = _state()
-    assert clean(
-        scroll(text("a"), text("b"), text("c"), text("d"), state=s).render(80, 2)
-    ) == ["a", "b"]
+    snap(scroll(text("a"), text("b"), text("c"), text("d"), state=s), 80, 2)
 
 
-def test_single_child():
+def test_single_child(snap: SnapFn):
     s = _state()
-    assert clean(scroll(text("only"), state=s).render(80, 1)) == ["only"]
+    snap(scroll(text("only"), state=s), 80, 1)
 
 
-def test_pads_when_content_shorter_than_height():
+def test_pads_when_content_shorter_than_height(snap: SnapFn):
     s = _state()
-    assert clean(scroll(text("a"), state=s).render(80, 3)) == ["a", "", ""]
+    snap(scroll(text("a"), state=s), 80, 3)
 
 
-def test_exact_fit():
+def test_exact_fit(snap: SnapFn):
     s = _state()
-    assert clean(scroll(text("a"), text("b"), text("c"), state=s).render(80, 3)) == [
-        "a",
-        "b",
-        "c",
-    ]
+    snap(scroll(text("a"), text("b"), text("c"), state=s), 80, 3)
 
 
-def test_empty_no_children():
+def test_empty_no_children(snap: SnapFn):
     s = _state()
-    assert clean(scroll(state=s).render(80, 3)) == ["", "", ""]
+    snap(scroll(state=s), 80, 3)
 
 
-def test_height_one():
+def test_height_one(snap: SnapFn):
     s = _state(2)
-    assert clean(scroll(text("a"), text("b"), text("c"), state=s).render(80, 1)) == [
-        "c"
-    ]
+    snap(scroll(text("a"), text("b"), text("c"), state=s), 80, 1)
 
 
 # ── Offset clamping ─────────────────────────────────────────────────
 
 
-def test_clamps_offset_over_max():
+def test_clamps_offset_over_max(snap: SnapFn):
     s = _state(10)
-    assert clean(scroll(text("a"), text("b"), text("c"), state=s).render(80, 2)) == [
-        "b",
-        "c",
-    ]
+    snap(scroll(text("a"), text("b"), text("c"), state=s), 80, 2)
     assert s.offset == 1
 
 
-def test_offset_negative_clamps_to_zero():
+def test_offset_negative_clamps_to_zero(snap: SnapFn):
     s = _state(-5)
-    assert clean(scroll(text("a"), text("b"), text("c"), state=s).render(80, 2)) == [
-        "a",
-        "b",
-    ]
+    snap(scroll(text("a"), text("b"), text("c"), state=s), 80, 2)
     assert s.offset == 0
 
 
-def test_offset_exactly_at_max():
+def test_offset_exactly_at_max(snap: SnapFn):
     s = _state(2)
-    assert clean(
-        scroll(text("a"), text("b"), text("c"), text("d"), state=s).render(80, 2)
-    ) == ["c", "d"]
+    snap(scroll(text("a"), text("b"), text("c"), text("d"), state=s), 80, 2)
     assert s.offset == 2
 
 
-def test_offset_clamps_when_content_fits():
+def test_offset_clamps_when_content_fits(snap: SnapFn):
     s = _state(5)
-    assert clean(scroll(text("a"), text("b"), state=s).render(80, 5)) == [
-        "a",
-        "b",
-        "",
-        "",
-        "",
-    ]
+    snap(scroll(text("a"), text("b"), state=s), 80, 5)
     assert s.offset == 0
 
 
 # ── Multiline children ──────────────────────────────────────────────
 
 
-def test_multiline_child():
+def test_multiline_child(snap: SnapFn):
     s = _state()
     child = vstack(text("x"), text("y"))
-    assert clean(scroll(child, text("z"), state=s).render(80, 2)) == ["x", "y"]
+    snap(scroll(child, text("z"), state=s), 80, 2)
 
 
-def test_multiline_child_partial_clip():
+def test_multiline_child_partial_clip(snap: SnapFn):
     s = _state()
     child = vstack(text("x"), text("y"), text("z"))
-    assert clean(scroll(child, text("after"), state=s).render(80, 2)) == ["x", "y"]
+    snap(scroll(child, text("after"), state=s), 80, 2)
 
 
-def test_multiline_child_at_offset():
+def test_multiline_child_at_offset(snap: SnapFn):
     s = _state(1)
     child1 = vstack(text("a"), text("b"))
     child2 = vstack(text("c"), text("d"))
     child3 = vstack(text("e"), text("f"))
-    assert clean(scroll(child1, child2, child3, state=s).render(80, 2)) == ["c", "d"]
+    snap(scroll(child1, child2, child3, state=s), 80, 2)
 
 
-def test_mixed_single_and_multiline():
+def test_mixed_single_and_multiline(snap: SnapFn):
     s = _state()
     child = vstack(text("x"), text("y"))
-    assert clean(
-        scroll(text("header"), child, text("footer"), state=s).render(80, 4)
-    ) == ["header", "x", "y", "footer"]
+    snap(scroll(text("header"), child, text("footer"), state=s), 80, 4)
 
 
 # ── Flex delegation ─────────────────────────────────────────────────
 
 
-def test_flex_basis_uses_max():
+def test_renders_children_at_natural_width(snap: SnapFn):
+    """Scroll renders children at their natural width."""
     s = _state()
-    assert scroll(text("hi"), text("hello"), state=s).flex_basis == 5
-
-
-def test_flex_basis_empty():
-    s = _state()
-    assert scroll(state=s).flex_basis == 0
+    snap(scroll(text("hi"), text("hello"), state=s), 20, 5)
 
 
 def test_flex_grow_when_child_grows():
@@ -161,101 +128,86 @@ def test_flex_grow_fill():
 # ── height="fill" ───────────────────────────────────────────────────
 
 
-def test_fill_uses_parent_height():
+def test_fill_uses_parent_height(snap: SnapFn):
     s = _state()
-    assert clean(
-        scroll(text("a"), text("b"), text("c"), text("d"), text("e"), state=s).render(
-            80, 3
-        )
-    ) == ["a", "b", "c"]
+    snap(scroll(text("a"), text("b"), text("c"), text("d"), text("e"), state=s), 80, 3)
 
 
-def test_fill_with_offset():
+def test_fill_with_offset(snap: SnapFn):
     s = _state(2)
-    assert clean(
-        scroll(text("a"), text("b"), text("c"), text("d"), state=s).render(80, 2)
-    ) == [
-        "c",
-        "d",
-    ]
+    snap(scroll(text("a"), text("b"), text("c"), text("d"), state=s), 80, 2)
 
 
-def test_fill_in_vstack():
+def test_fill_in_vstack(snap: SnapFn):
     s = _state()
     v = vstack(
         text("header"), scroll(text("a"), text("b"), text("c"), text("d"), state=s)
     )
-    assert clean(v.render(80, 4)) == ["header", "a", "b", "c"]
+    snap(v, 80, 4)
 
 
-def test_fill_in_vstack_with_multiple_fixed():
+def test_fill_in_vstack_with_multiple_fixed(snap: SnapFn):
     s = _state()
     v = vstack(
         text("top"), scroll(text("a"), text("b"), text("c"), state=s), text("bottom")
     )
-    assert clean(v.render(80, 5)) == ["top", "a", "b", "c", "bottom"]
+    snap(v, 80, 5)
 
 
-def test_fill_in_vstack_with_spacing():
+def test_fill_in_vstack_with_spacing(snap: SnapFn):
     s = _state()
     v = vstack(
         text("top"),
         scroll(text("a"), text("b"), text("c"), text("d"), state=s),
         spacing=1,
     )
-    assert clean(v.render(80, 5)) == ["top", "", "a", "b", "c"]
+    snap(v, 80, 5)
 
 
-def test_fill_returns_empty_without_parent_height():
+def test_fill_returns_empty_without_parent_height(snap: SnapFn):
     s = _state()
-    assert clean(scroll(text("a"), state=s).render(80)) == []
+    snap(scroll(text("a"), state=s), 80)
 
 
-def test_fill_clamps_offset():
+def test_fill_clamps_offset(snap: SnapFn):
     s = _state(100)
-    assert clean(scroll(text("a"), text("b"), text("c"), state=s).render(80, 2)) == [
-        "b",
-        "c",
-    ]
+    snap(scroll(text("a"), text("b"), text("c"), state=s), 80, 2)
     assert s.offset == 1
 
 
-def test_fill_inside_box():
+def test_fill_inside_box(snap: SnapFn):
     s = _state()
-    b = box(scroll(text("a"), text("b"), text("c"), text("d"), state=s))
-    lines = vis(b.render(10, 5))
-    assert lines == [
-        "╭────────╮",
-        "│a·······│",
-        "│b·······│",
-        "│c·······│",
-        "╰────────╯",
-    ]
+    snap(box(scroll(text("a"), text("b"), text("c"), text("d"), state=s)), 10, 5)
 
 
 # ── Render feeds back dimensions ────────────────────────────────────
 
 
-def test_render_feeds_back_fixed_height():
+def test_render_feeds_back_fixed_height(snap: SnapFn):
     s = _state()
-    scroll(text("a"), text("b"), text("c"), state=s).render(80, 2)
+    snap(scroll(text("a"), text("b"), text("c"), state=s), 80, 2)
     assert s.height == 2
     assert s.total == 3
 
 
-def test_render_feeds_back_fill_height():
+def test_render_feeds_back_fill_height(snap: SnapFn):
     s = _state()
-    scroll(text("a"), text("b"), state=s).render(80, 10)
+    snap(scroll(text("a"), text("b"), state=s), 80, 10)
     assert s.height == 10
     assert s.total == 2
 
 
-def test_dimensions_update_on_rerender():
+def test_dimensions_update_on_rerender(snap: SnapFn):
     s = _state()
-    scroll(text("a"), text("b"), state=s).render(80, 5)
+    snap(scroll(text("a"), text("b"), state=s), 80, 5, name="dimensions_first")
     assert s.total == 2
     assert s.height == 5
-    scroll(text("a"), text("b"), text("c"), text("d"), state=s).render(80, 3)
+    snap(
+        scroll(text("a"), text("b"), text("c"), text("d"), state=s),
+        80,
+        3,
+        name="dimensions_second",
+    )
     assert s.total == 4
     assert s.height == 3
 
@@ -263,74 +215,89 @@ def test_dimensions_update_on_rerender():
 # ── Shared state across renders ─────────────────────────────────────
 
 
-def test_state_persists_offset_across_renders():
+def test_state_persists_offset_across_renders(snap: SnapFn):
     s = _state()
     s.height = 3
     s.total = 10
     s.scroll_down(5)
-    assert clean(scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)) == [
-        "5",
-        "6",
-        "7",
-    ]
+    snap(scroll(*[text(str(i)) for i in range(10)], state=s), 80, 3)
 
 
-def test_scroll_down_then_render():
+def test_scroll_down_then_render(snap: SnapFn):
     s = _state()
-    scroll(text("a"), text("b"), text("c"), text("d"), state=s).render(80, 2)
+    snap(
+        scroll(text("a"), text("b"), text("c"), text("d"), state=s),
+        80,
+        2,
+        name="scroll_down_before",
+    )
     s.scroll_down()
-    assert clean(
-        scroll(text("a"), text("b"), text("c"), text("d"), state=s).render(80, 2)
-    ) == ["b", "c"]
+    snap(
+        scroll(text("a"), text("b"), text("c"), text("d"), state=s),
+        80,
+        2,
+        name="scroll_down_after",
+    )
 
 
-def test_page_down_then_render():
+def test_page_down_then_render(snap: SnapFn):
     s = _state()
-    scroll(*[text(str(i)) for i in range(20)], state=s).render(80, 5)
+    snap(
+        scroll(*[text(str(i)) for i in range(20)], state=s),
+        80,
+        5,
+        name="page_down_before",
+    )
     s.page_down()
-    assert clean(scroll(*[text(str(i)) for i in range(20)], state=s).render(80, 5)) == [
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-    ]
+    snap(
+        scroll(*[text(str(i)) for i in range(20)], state=s),
+        80,
+        5,
+        name="page_down_after",
+    )
 
 
-def test_page_up_from_middle():
+def test_page_up_from_middle(snap: SnapFn):
     s = _state()
-    scroll(*[text(str(i)) for i in range(20)], state=s).render(80, 5)
+    snap(
+        scroll(*[text(str(i)) for i in range(20)], state=s),
+        80,
+        5,
+        name="page_up_initial",
+    )
     s.scroll_down(10)
     s.page_up()
-    assert clean(scroll(*[text(str(i)) for i in range(20)], state=s).render(80, 5)) == [
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-    ]
+    snap(
+        scroll(*[text(str(i)) for i in range(20)], state=s), 80, 5, name="page_up_after"
+    )
 
 
-def test_scroll_to_bottom_then_render():
+def test_scroll_to_bottom_then_render(snap: SnapFn):
     s = _state()
-    scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s),
+        80,
+        3,
+        name="to_bottom_before",
+    )
     s.scroll_to_bottom()
-    assert clean(scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)) == [
-        "7",
-        "8",
-        "9",
-    ]
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s),
+        80,
+        3,
+        name="to_bottom_after",
+    )
 
 
-def test_scroll_to_top_then_render():
+def test_scroll_to_top_then_render(snap: SnapFn):
     s = _state(5)
-    scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s), 80, 3, name="to_top_before"
+    )
     s.scroll_to_top()
-    assert clean(scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)) == [
-        "0",
-        "1",
-        "2",
-    ]
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s), 80, 3, name="to_top_after"
+    )
 
 
 # ── ScrollState edge cases ──────────────────────────────────────────
@@ -549,50 +516,65 @@ def test_follow_disabled_by_default():
     assert s.follow is False
 
 
-def test_follow_sticks_to_bottom():
+def test_follow_sticks_to_bottom(snap: SnapFn):
     s = ScrollState(follow=True)
     items = [text(str(i)) for i in range(10)]
-    scroll(*items, state=s).render(80, 3)
+    snap(scroll(*items, state=s), 80, 3, name="follow_sticks_10")
     assert s.offset == 7
-
     items.extend(text(str(i)) for i in range(10, 20))
-    scroll(*items, state=s).render(80, 3)
+    snap(scroll(*items, state=s), 80, 3, name="follow_sticks_20")
     assert s.offset == 17
 
 
-def test_scroll_up_disables_follow():
+def test_scroll_up_disables_follow(snap: SnapFn):
     s = ScrollState(follow=True)
-    scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s),
+        80,
+        3,
+        name="follow_up_before",
+    )
     s.scroll_up(2)
     assert s.follow is False
     assert s.offset == 5
-
-    scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s),
+        80,
+        3,
+        name="follow_up_after",
+    )
     assert s.offset == 5
 
 
-def test_follow_reengages_at_bottom():
+def test_follow_reengages_at_bottom(snap: SnapFn):
     s = ScrollState(follow=True)
-    scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s),
+        80,
+        3,
+        name="follow_reengage_before",
+    )
     s.scroll_up(2)
     assert s.follow is False
-
     s.scroll_down(2)
-    scroll(*[text(str(i)) for i in range(10)], state=s).render(80, 3)
+    snap(
+        scroll(*[text(str(i)) for i in range(10)], state=s),
+        80,
+        3,
+        name="follow_reengage_after",
+    )
     assert s.follow is True
 
 
-def test_follow_with_growing_content():
+def test_follow_with_growing_content(snap: SnapFn):
     s = ScrollState(follow=True)
     items = [text(str(i)) for i in range(5)]
-    scroll(*items, state=s).render(80, 3)
+    snap(scroll(*items, state=s), 80, 3, name="follow_grow_initial")
     assert s.offset == 2
-
     s.scroll_up(1)
     assert s.follow is False
-
     items.extend([text(str(i)) for i in range(5, 10)])
-    scroll(*items, state=s).render(80, 3)
+    snap(scroll(*items, state=s), 80, 3, name="follow_grow_after")
     assert s.offset == 1
 
 
@@ -617,37 +599,34 @@ def test_scroll_down_does_not_disable_follow():
 # ── Scrollbar component ────────────────────────────────────────────
 
 
-def test_scrollbar_returns_one_char_wide():
+def test_scrollbar_returns_one_char_wide(snap: SnapFn):
     s = _state()
-    scroll(*[text(str(i)) for i in range(20)], state=s).render(80, 5)
-    lines = scrollbar(state=s).render(1, 5)
-    assert len(lines) == 5
-    for line in lines:
-        assert display_width(line) == 1
+    snap(
+        scroll(*[text(str(i)) for i in range(20)], state=s),
+        80,
+        5,
+        name="scrollbar_wide_scroll",
+    )
+    snap(scrollbar(state=s), 1, 5, name="scrollbar_wide_bar")
 
 
-def test_scrollbar_empty_when_content_fits():
+def test_scrollbar_empty_when_content_fits(snap: SnapFn):
     s = _state()
-    scroll(text("a"), text("b"), state=s).render(80, 5)
-    lines = scrollbar(state=s).render(1, 5)
-    assert all(line == "" for line in lines)
+    snap(scroll(text("a"), text("b"), state=s), 80, 5, name="scrollbar_empty_scroll")
+    snap(scrollbar(state=s), 1, 5, name="scrollbar_empty_bar")
 
 
-def test_scrollbar_thumb_moves_with_offset():
+def test_scrollbar_thumb_moves_with_offset(snap: SnapFn):
     items = [text(str(i)) for i in range(100)]
-
     s1 = _state(0)
-    scroll(*items, state=s1).render(80, 10)
-    bar_top = [strip_ansi(l) for l in scrollbar(state=s1).render(1, 10)]
-
+    snap(scroll(*items, state=s1), 80, 10, name="scrollbar_thumb_top_scroll")
+    snap(scrollbar(state=s1), 1, 10, name="scrollbar_thumb_top")
     s2 = _state(90)
-    scroll(*items, state=s2).render(80, 10)
-    bar_bot = [strip_ansi(l) for l in scrollbar(state=s2).render(1, 10)]
-
-    assert bar_top != bar_bot
+    snap(scroll(*items, state=s2), 80, 10, name="scrollbar_thumb_bottom_scroll")
+    snap(scrollbar(state=s2), 1, 10, name="scrollbar_thumb_bottom")
 
 
-def test_scrollbar_composes_with_hstack():
+def test_scrollbar_composes_with_hstack(snap: SnapFn):
     s = _state()
     view = vstack(
         hstack(
@@ -656,29 +635,33 @@ def test_scrollbar_composes_with_hstack():
             grow=1,
         ),
     )
-    lines = view.render(20, 5)
-    assert len(lines) == 5
+    snap(view, 20, 5)
 
 
-def test_scrollbar_custom_render_fn():
+def test_scrollbar_custom_render_fn(snap: SnapFn):
     def my_bar(h: int, total: int, offset: int) -> list[str]:
         return ["X"] * h
 
     s = _state()
-    scroll(*[text(str(i)) for i in range(20)], state=s).render(80, 3)
-    assert scrollbar(state=s, render_fn=my_bar).render(1, 3) == ["X", "X", "X"]
+    snap(
+        scroll(*[text(str(i)) for i in range(20)], state=s),
+        80,
+        3,
+        name="scrollbar_custom_scroll",
+    )
+    snap(scrollbar(state=s, render_fn=my_bar), 1, 3, name="scrollbar_custom_bar")
 
 
 def test_scrollbar_default_fn_directly():
     col = scrollbar_default(10, 100, 0)
     assert len(col) == 10
-    assert any(strip_ansi(c) == "┃" for c in col[:3])
+    assert any("┃" in c for c in col[:3])
 
 
 def test_scrollbar_default_at_bottom():
     col = scrollbar_default(10, 100, 90)
     assert len(col) == 10
-    assert any(strip_ansi(c) == "┃" for c in col[-3:])
+    assert any("┃" in c for c in col[-3:])
 
 
 def test_scrollbar_default_content_fits():
@@ -689,14 +672,14 @@ def test_scrollbar_default_content_fits():
 def test_scrollbar_default_single_row():
     col = scrollbar_default(1, 100, 0)
     assert len(col) == 1
-    assert strip_ansi(col[0]) == "┃"
+    assert "┃" in col[0]
 
 
 def test_scrollbar_default_monotonic():
     def thumb_top(offset: int) -> int:
         col = scrollbar_default(20, 200, offset)
         for i, c in enumerate(col):
-            if strip_ansi(c) == "┃":
+            if "┃" in c:
                 return i
         return 20
 
@@ -735,49 +718,39 @@ def test_scroll_always_grows():
 # ── Scroll + Scrollbar end-to-end ─────────────────────────────────
 
 
-def test_scroll_and_scrollbar_share_state():
+def test_scroll_and_scrollbar_share_state(snap: SnapFn):
     s = ScrollState()
     items = [text(str(i)) for i in range(50)]
-    scroll(*items, state=s).render(80, 10)
+    snap(scroll(*items, state=s), 80, 10, name="share_state_scroll")
     assert s.height == 10
     assert s.total == 50
-    bar = scrollbar(state=s).render(1, 10)
-    assert len(bar) == 10
-    assert any(strip_ansi(c) == "┃" for c in bar)
+    snap(scrollbar(state=s), 1, 10, name="share_state_bar")
 
 
-def test_follow_tracks_growing_content_end_to_end():
+def test_follow_tracks_growing_content_end_to_end(snap: SnapFn):
     s = ScrollState(follow=True)
     items = [text(str(i)) for i in range(5)]
-    assert clean(scroll(*items, state=s).render(80, 3)) == ["2", "3", "4"]
-
+    snap(scroll(*items, state=s), 80, 3, name="follow_initial")
     items.extend(text(str(i)) for i in range(5, 15))
-    assert clean(scroll(*items, state=s).render(80, 3)) == ["12", "13", "14"]
-
+    snap(scroll(*items, state=s), 80, 3, name="follow_after_grow")
     s.scroll_up(5)
-    assert clean(scroll(*items, state=s).render(80, 3)) == ["7", "8", "9"]
-
+    snap(scroll(*items, state=s), 80, 3, name="follow_after_scroll_up")
     items.extend(text(str(i)) for i in range(15, 25))
-    assert clean(scroll(*items, state=s).render(80, 3)) == ["7", "8", "9"]
-
+    snap(scroll(*items, state=s), 80, 3, name="follow_disabled_grow")
     s.scroll_to_bottom()
-    assert clean(scroll(*items, state=s).render(80, 3)) == ["22", "23", "24"]
-
+    snap(scroll(*items, state=s), 80, 3, name="follow_reengaged")
     items.extend(text(str(i)) for i in range(25, 30))
-    assert clean(scroll(*items, state=s).render(80, 3)) == ["27", "28", "29"]
+    snap(scroll(*items, state=s), 80, 3, name="follow_final")
 
 
-def test_scroll_follow_stays_off_when_content_fits():
+def test_scroll_follow_stays_off_when_content_fits(snap: SnapFn):
     s = ScrollState(follow=True)
     items = [text("a"), text("b"), text("c")]
-    scroll(*items, state=s).render(80, 3)
+    snap(scroll(*items, state=s), 80, 3, name="follow_stays_off_before")
     assert s.follow is True
-
-    s.scroll_up()  # explicitly disable follow
+    s.scroll_up()
     assert s.follow is False
-
-    # follow should stay off when content fits viewport
-    scroll(*items, state=s).render(80, 3)
+    snap(scroll(*items, state=s), 80, 3, name="follow_stays_off_after")
     assert s.follow is False
 
 
@@ -789,10 +762,8 @@ def test_scroll_state_zero_total_scroll_down():
     assert s.offset == 0
 
 
-def test_scrollbar_uses_state_height_not_render_h():
+def test_scrollbar_uses_state_height_not_render_h(snap: SnapFn):
     """Scrollbar uses state.height from a prior scroll render, not the h argument."""
     s = ScrollState()
     s.total = 100
-    # state.height is still 0 — scrollbar produces no lines
-    lines = scrollbar(state=s).render(1, 10)
-    assert lines == []
+    snap(scrollbar(state=s), 1, 10)

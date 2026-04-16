@@ -1,95 +1,57 @@
 """Tests for Spacer component."""
 
-from helpers import vis
+from conftest import SnapFn
 
 from ttyz import hstack, spacer, text, vstack, zstack
 
 # ── HStack: expands horizontally, not vertically ───────────────────
 
 
-def test_hstack_spacer_right():
-    #                        ├── spacer ──┤├end┤
-    assert vis(hstack(spacer(), text("end")).render(15)) == [
-        "············end",
-    ]
+def test_hstack_spacer_right(snap: SnapFn):
+    snap(hstack(spacer(), text("end")), 15)
 
 
-def test_hstack_spacer_left():
-    #                        ├str─┤├── spacer ──┤
-    assert vis(hstack(text("start"), spacer()).render(15)) == [
-        "start··········",
-    ]
+def test_hstack_spacer_left(snap: SnapFn):
+    snap(hstack(text("start"), spacer()), 15)
 
 
-def test_hstack_spacer_both_sides():
-    #                        ├spacer┤├mid┤├spacer┤
-    assert vis(hstack(spacer(), text("mid"), spacer()).render(15)) == [
-        "······mid······",
-    ]
+def test_hstack_spacer_both_sides(snap: SnapFn):
+    snap(hstack(spacer(), text("mid"), spacer()), 15)
 
 
-def test_hstack_spacer_does_not_add_rows():
-    assert vis(hstack(text("a"), spacer(), text("b")).render(10)) == [
-        "a········b",
-    ]
+def test_hstack_spacer_does_not_add_rows(snap: SnapFn):
+    snap(hstack(text("a"), spacer(), text("b")), 10)
 
 
 # ── VStack: expands vertically, not horizontally ───────────────────
 
 
-def test_vstack_spacer_pushes_down():
-    assert vis(vstack(spacer(), text("bot")).render(3, 4)) == [
-        "",
-        "",
-        "",
-        "bot",
-    ]
+def test_vstack_spacer_pushes_down(snap: SnapFn):
+    snap(vstack(spacer(), text("bot")), 3, 4)
 
 
-def test_vstack_spacer_pushes_up():
-    assert vis(vstack(text("top"), spacer()).render(3, 4)) == [
-        "top",
-        "",
-        "",
-        "",
-    ]
+def test_vstack_spacer_pushes_up(snap: SnapFn):
+    snap(vstack(text("top"), spacer()), 3, 4)
 
 
-def test_vstack_spacer_between():
-    assert vis(vstack(text("hi"), spacer(), text("lo")).render(2, 5)) == [
-        "hi",
-        "",
-        "",
-        "",
-        "lo",
-    ]
+def test_vstack_spacer_between(snap: SnapFn):
+    snap(vstack(text("hi"), spacer(), text("lo")), 2, 5)
 
 
-def test_vstack_spacer_no_height_constraint():
+def test_vstack_spacer_no_height_constraint(snap: SnapFn):
     """Without height, no flex context — spacer is just one empty line."""
-    assert vis(vstack(text("a"), spacer(), text("b")).render(1)) == [
-        "a",
-        "",
-        "b",
-    ]
+    snap(vstack(text("a"), spacer(), text("b")), 1)
 
 
 # ── ZStack: expands on both axes ───────────────────────────────────
 
 
-def test_zstack_spacer_fills_canvas():
-    assert vis(zstack(spacer()).render(4, 3)) == [
-        "····",
-        "····",
-        "····",
-    ]
+def test_zstack_spacer_fills_canvas(snap: SnapFn):
+    snap(zstack(spacer()), 4, 3)
 
 
-def test_zstack_spacer_behind_content():
-    assert vis(zstack(spacer(), text("hi")).render(4, 2)) == [
-        "hi··",
-        "····",
-    ]
+def test_zstack_spacer_behind_content(snap: SnapFn):
+    snap(zstack(spacer(), text("hi")), 4, 2)
 
 
 # ── Flex properties ─────────────────────────────────────────────────
@@ -99,12 +61,14 @@ def test_grow_is_one():
     assert spacer().grow == 1
 
 
-def test_flex_basis_default():
-    assert spacer().flex_basis == 0
+def test_intrinsic_width(snap: SnapFn):
+    """Spacer has zero intrinsic width, grows to fill remaining space."""
+    snap(hstack(text("A"), spacer(), text("B")), 10)
 
 
-def test_min_length():
-    assert spacer(min_length=5).flex_basis == 5
+def test_min_length(snap: SnapFn):
+    """Spacer with min_length guarantees minimum space in layout."""
+    snap(hstack(spacer(min_length=5), text("|")), 6)
 
 
 def test_does_not_propagate_grow():
@@ -115,20 +79,11 @@ def test_does_not_propagate_grow():
 # ── No cross-axis leak ─────────────────────────────────────────────
 
 
-def test_hstack_with_spacer_does_not_steal_height():
+def test_hstack_with_spacer_does_not_steal_height(snap: SnapFn):
     header = hstack(text("L"), spacer(), text("R"))
-    lines = vis(vstack(header, text("scene")).render(5, 4))
-    assert lines == [
-        "L···R",
-        "scene",
-    ]
+    snap(vstack(header, text("scene")), 5, 4)
 
 
-def test_vstack_with_spacer_does_not_steal_width():
+def test_vstack_with_spacer_does_not_steal_width(snap: SnapFn):
     sidebar = vstack(text("T"), spacer(), text("B"))
-    lines = vis(hstack(sidebar, text("scene")).render(6, 3))
-    assert lines == [
-        "Tscene",
-        "······",
-        "B·····",
-    ]
+    snap(hstack(sidebar, text("scene")), 6, 3)

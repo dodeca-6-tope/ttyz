@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from ttyz.components.base import Renderable
+from ttyz.components.base import Node
 from ttyz.keys import Event, Key, Paste
 
 
@@ -241,28 +241,10 @@ def display_cursor(ti: InputBuffer) -> int:
     return max(0, ti.cursor + offset)
 
 
-CURSOR_ON = "\033[7m"
-CURSOR_OFF = "\033[27m"
+class Input(Node):
+    """Text input node."""
 
-
-def _wrap(text: str, width: int) -> list[str]:
-    if not text:
-        return [""]
-    return [text[i : i + width] for i in range(0, len(text), width)]
-
-
-def _wrap_with_cursor(text: str, cur: int, width: int) -> list[str]:
-    raw = text + " " if cur >= len(text) else text
-    lines: list[str] = []
-    for i in range(0, len(raw), width):
-        chunk = raw[i : i + width]
-        if i <= cur < i + len(chunk):
-            pos = cur - i
-            chunk = (
-                f"{chunk[:pos]}{CURSOR_ON}{chunk[pos]}{CURSOR_OFF}{chunk[pos + 1 :]}"
-            )
-        lines.append(chunk)
-    return lines
+    __slots__ = ("buffer", "placeholder", "active")
 
 
 def input(
@@ -275,24 +257,10 @@ def input(
     grow: int | None = None,
     bg: int | None = None,
     overflow: str = "visible",
-) -> Renderable:
-    if ti.value:
-        w = len(display_text(ti))
-        basis = w + 1 if active else w
-    else:
-        basis = len(placeholder)
+) -> Input:
+    node = Input((), grow or 0, width, height, bg, overflow)
+    node.buffer = ti
+    node.placeholder = placeholder
+    node.active = active
 
-    def render(w: int, h: int | None = None) -> list[str]:
-        if not ti.value and not active:
-            if placeholder:
-                return [f"\033[2m{placeholder}\033[0m"]
-            return [""]
-        txt = display_text(ti)
-        if active:
-            cur = display_cursor(ti)
-            return _wrap_with_cursor(txt, cur, w)
-        return _wrap(txt, w)
-
-    return Renderable(
-        render, basis, grow or 0, width=width, height=height, bg=bg, overflow=overflow
-    )
+    return node

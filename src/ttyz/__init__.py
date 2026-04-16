@@ -1,10 +1,11 @@
 from ttyz.components import (
+    Custom,
     InputBuffer,
     Keyed,
     ListState,
     Message,
+    Node,
     PasteRange,
-    Renderable,
     ScrollState,
     TableRow,
     ToastState,
@@ -51,6 +52,7 @@ from ttyz.control import (
     SetTitle,
     ShowCursor,
 )
+from ttyz.ext import Buffer, char_width, render_to_buffer
 from ttyz.keys import Event, Focus, Key, Mouse, Paste, Resize
 from ttyz.style import (
     bg,
@@ -70,7 +72,10 @@ from ttyz.style import (
 from ttyz.term import TTY
 
 __all__ = [
+    "Buffer",
+    "char_width",
     "Command",
+    "Custom",
     "CursorBack",
     "CursorDown",
     "CursorForward",
@@ -93,9 +98,9 @@ __all__ = [
     "Message",
     "Mouse",
     "MoveTo",
+    "Node",
     "Paste",
     "PasteRange",
-    "Renderable",
     "ResetScrollRegion",
     "Resize",
     "RestoreCursor",
@@ -126,6 +131,7 @@ __all__ = [
     "italic",
     "list",
     "overline",
+    "render_to_buffer",
     "reverse",
     "rgb",
     "scroll",

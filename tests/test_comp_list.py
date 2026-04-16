@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+from conftest import SnapFn
+
 from ttyz import ListState
 
 
@@ -83,11 +85,9 @@ def test_set_items_to_empty():
     assert s.current is None
 
 
-def test_set_items_invalidates_render_cache():
-    from helpers import clean
-
+def test_set_items_updates_render(snap: SnapFn):
     from ttyz import list, text
-    from ttyz.components.base import Renderable
+    from ttyz.components.base import Node
 
     @dataclass
     class LabelItem:
@@ -96,13 +96,10 @@ def test_set_items_invalidates_render_cache():
 
     state = ListState([LabelItem("a", "original")])
 
-    def render_fn(item: LabelItem, selected: bool) -> Renderable:
+    def render_fn(item: LabelItem, selected: bool) -> Node:
         return text(item.label)
 
-    comp = list(state, render_fn)
-    lines1 = clean(comp.render(80, 5))
-    assert lines1[0] == "original"
+    snap(list(state, render_fn), 80, 5, name="list_original")
 
     state.set_items([LabelItem("a", "UPDATED")])
-    lines2 = clean(comp.render(80, 5))
-    assert lines2[0] == "UPDATED"
+    snap(list(state, render_fn), 80, 5, name="list_updated")

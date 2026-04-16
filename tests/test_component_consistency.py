@@ -4,14 +4,12 @@ Verifies that components sharing the same concept (flex delegation, height
 pass-through, private children, empty render) follow identical rules.
 """
 
-from helpers import vis
+from conftest import SnapFn
 
-from ttyz import Renderable, cond, foreach, hstack, scroll, text, vstack, zstack
+from ttyz import Node, cond, foreach, hstack, scroll, text, vstack, zstack
 from ttyz.components.scroll import ScrollState
-from ttyz.measure import display_width, strip_ansi
 
 # ── grow delegation ───────────────────────────────────────────────────
-# Every wrapper that delegates flex_basis must also delegate grow.
 
 
 def test_cond_delegates_grow_true():
@@ -40,33 +38,33 @@ def test_foreach_grow_not_propagated():
 # ── Height pass-through: only growers receive height ──────────────────
 
 
-def _make_scroll(n: int = 20) -> tuple[ScrollState, list[Renderable]]:
+def _make_scroll(n: int = 20) -> tuple[ScrollState, list[Node]]:
     s = ScrollState()
-    items: list[Renderable] = [text(str(i)) for i in range(n)]
+    items: list[Node] = [text(str(i)) for i in range(n)]
     return s, items
 
 
-def test_hstack_passes_height_only_to_growers():
+def test_hstack_passes_height_only_to_growers(snap: SnapFn):
     s, items = _make_scroll()
-    hstack(scroll(*items, state=s), text("fixed")).render(40, 5)
+    snap(hstack(scroll(*items, state=s), text("fixed")), 40, 5)
     assert s.height == 5
 
 
-def test_zstack_passes_height_only_to_growers():
+def test_zstack_passes_height_only_to_growers(snap: SnapFn):
     s, items = _make_scroll()
-    zstack(scroll(*items, state=s), text("overlay")).render(40, 5)
+    snap(zstack(scroll(*items, state=s), text("overlay")), 40, 5)
     assert s.height == 5
 
 
-def test_zstack_passes_height_to_children():
+def test_zstack_passes_height_to_children(snap: SnapFn):
     s = ScrollState()
-    zstack(text("base"), scroll(text("a"), state=s)).render(40, 5)
+    snap(zstack(text("base"), scroll(text("a"), state=s)), 40, 5)
     assert s.height == 5
 
 
-def test_foreach_passes_height_to_children():
+def test_foreach_passes_height_to_children(snap: SnapFn):
     s = ScrollState()
-    foreach(["a"], lambda item, i: scroll(text(item), state=s)).render(40, 5)
+    snap(foreach(["a"], lambda item, i: scroll(text(item), state=s)), 40, 5)
     assert s.height == 5
 
 
@@ -91,11 +89,15 @@ def test_foreach_no_propagation():
 # ── All containers: flex methods match on empty ───────────────────────
 
 
-def test_empty_flex_basis():
-    assert hstack().flex_basis == 0
-    assert vstack().flex_basis == 0
-    assert zstack().flex_basis == 0
-    assert foreach([], lambda item, i: text(str(item))).flex_basis == 0
+def test_empty_intrinsic_width(snap: SnapFn):
+    """Empty containers have zero intrinsic width."""
+    for name, container in [
+        ("hstack", hstack()),
+        ("vstack", vstack()),
+        ("zstack", zstack()),
+        ("foreach", foreach([], lambda item, i: text(str(item)))),
+    ]:
+        snap(hstack(container, text("|")), 20, name=f"empty_{name}")
 
 
 def test_empty_grow():
@@ -108,29 +110,24 @@ def test_empty_grow():
 # ── Cond in HStack flex grow ──────────────────────────────────────────
 
 
-def test_cond_fill_text_grows_in_hstack():
-    assert vis(hstack(text("L"), cond(True, text("R", grow=1))).render(20)) == [
-        "LR··················",
-    ]
+def test_cond_fill_text_grows_in_hstack(snap: SnapFn):
+    snap(hstack(text("L"), cond(True, text("R", grow=1))), 20)
 
 
-def test_cond_false_fill_text_no_grow_in_hstack():
-    assert vis(hstack(text("L"), cond(False, text("R", grow=1))).render(20)) == ["L"]
+def test_cond_false_fill_text_no_grow_in_hstack(snap: SnapFn):
+    snap(hstack(text("L"), cond(False, text("R", grow=1))), 20)
 
 
 # ── Frame bg respects width constraint ───────────────────────────────
 
 
-def test_bg_respects_fixed_width():
-    r = text("hi", width="10", bg=1)
-    assert display_width(strip_ansi(r.render(40)[0])) == 10
+def test_bg_respects_fixed_width(snap: SnapFn):
+    snap(text("hi", width="10", bg=1), 40)
 
 
-def test_bg_respects_percentage_width():
-    r = vstack(text("hi"), width="50%", bg=1)
-    assert display_width(strip_ansi(r.render(40)[0])) == 20
+def test_bg_respects_percentage_width(snap: SnapFn):
+    snap(vstack(text("hi"), width="50%", bg=1), 40)
 
 
-def test_bg_without_width_uses_full_parent():
-    r = vstack(text("hi"), bg=1)
-    assert display_width(strip_ansi(r.render(40)[0])) == 40
+def test_bg_without_width_uses_full_parent(snap: SnapFn):
+    snap(vstack(text("hi"), bg=1), 40)

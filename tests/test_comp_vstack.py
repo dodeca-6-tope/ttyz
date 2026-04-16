@@ -1,75 +1,77 @@
 """Tests for VStack component."""
 
-from helpers import clean
+from conftest import SnapFn
 
 from ttyz import scroll, text, vstack
 from ttyz.components.scroll import ScrollState
 
 
-def test_stacks_children():
-    assert clean(vstack(text("a"), text("b")).render(80)) == ["a", "b"]
+def test_stacks_children(snap: SnapFn):
+    snap(vstack(text("a"), text("b")), 80)
 
 
-def test_spacing():
-    assert clean(vstack(text("a"), text("b"), spacing=1).render(80)) == ["a", "", "b"]
+def test_spacing(snap: SnapFn):
+    snap(vstack(text("a"), text("b"), spacing=1), 80)
 
 
-def test_empty():
-    assert clean(vstack().render(80)) == []
+def test_empty(snap: SnapFn):
+    snap(vstack(), 80)
 
 
-def test_flex_basis():
-    assert vstack(text("hello"), text("hi")).flex_basis == 5
+def test_intrinsic_width(snap: SnapFn):
+    from ttyz import hstack
+
+    snap(hstack(vstack(text("hello"), text("hi")), text("|")), 20)
 
 
 # ── Height-constrained rendering ─────────────────────────────────────
 
 
-def test_unconstrained_when_no_height():
+def test_unconstrained_when_no_height(snap: SnapFn):
     v = vstack(text("a"), text("b"), text("c"))
-    assert clean(v.render(80)) == ["a", "b", "c"]
-    assert clean(v.render(80, None)) == ["a", "b", "c"]
+    snap(v, 80, name="unconstrained_no_h")
+    snap(v, 80, None, name="unconstrained_none_h")
 
 
-def test_constrained_no_growers_ignores_height():
-    assert clean(vstack(text("a"), text("b")).render(80, 10)) == ["a", "b"]
+def test_constrained_no_growers_ignores_height(snap: SnapFn):
+    snap(vstack(text("a"), text("b")), 80, 10)
 
 
-def test_constrained_distributes_to_grower():
+def test_constrained_distributes_to_grower(snap: SnapFn):
     s = ScrollState()
     v = vstack(text("header"), scroll(text("a"), text("b"), text("c"), state=s))
-    assert clean(v.render(80, 4)) == ["header", "a", "b", "c"]
+    snap(v, 80, 4)
 
 
-def test_constrained_multiple_fixed_children():
+def test_constrained_multiple_fixed_children(snap: SnapFn):
     s = ScrollState()
     v = vstack(
         text("top"), scroll(text("a"), text("b"), text("c"), state=s), text("bottom")
     )
-    assert clean(v.render(80, 5)) == ["top", "a", "b", "c", "bottom"]
+    snap(v, 80, 5)
 
 
-def test_constrained_with_spacing():
+def test_constrained_with_spacing(snap: SnapFn):
     s = ScrollState()
     v = vstack(
         text("top"),
         scroll(text("a"), text("b"), text("c"), text("d"), state=s),
         spacing=1,
     )
-    assert clean(v.render(80, 5)) == ["top", "", "a", "b", "c"]
+    snap(v, 80, 5)
 
 
-def test_constrained_two_growers():
+def test_constrained_two_growers(snap: SnapFn):
     s1 = ScrollState()
     s2 = ScrollState()
     v = vstack(
         scroll(*[text(str(i)) for i in range(10)], state=s1),
         scroll(*[text(str(i + 10)) for i in range(10)], state=s2),
     )
-    assert clean(v.render(80, 6)) == ["0", "1", "2", "10", "11", "12"]
+    snap(v, 80, 6)
 
 
-def test_constrained_grower_gets_zero_when_fixed_fills():
+def test_constrained_grower_gets_zero_when_fixed_fills(snap: SnapFn):
     s = ScrollState()
     v = vstack(
         text("a"),
@@ -77,7 +79,7 @@ def test_constrained_grower_gets_zero_when_fixed_fills():
         text("c"),
         scroll(text("x"), text("y"), state=s),
     )
-    assert clean(v.render(80, 3)) == ["a", "b", "c"]
+    snap(v, 80, 3)
 
 
 # ── flex_grow propagation ───────────────────────────────────────────
@@ -94,7 +96,7 @@ def test_flex_grow_false_without_growers():
 # ── bg fills parent-allocated height ───────────────────────────────
 
 
-def test_bg_fills_flex_allocated_height():
+def test_bg_fills_flex_allocated_height(snap: SnapFn):
     from ttyz import spacer
 
     v = vstack(
@@ -102,12 +104,10 @@ def test_bg_fills_flex_allocated_height():
         spacer(),
         bg=2,
     )
-    assert len(clean(v.render(10, 10))) == 10
+    snap(v, 10, 10)
 
 
-def test_height_child_with_height_spec():
+def test_height_child_with_height_spec(snap: SnapFn):
     """A child with height='2' is clipped to 2 lines even when parent has more."""
     child = text("content", height="2")
-    v = vstack(child)
-    lines = v.render(80, 10)
-    assert len(lines) == 2
+    snap(vstack(child), 80, 10)

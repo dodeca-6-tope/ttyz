@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 *.so
+*.dSYM
 *.pyd
 build/
 *.egg-info/

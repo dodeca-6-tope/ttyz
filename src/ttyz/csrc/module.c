@@ -8,22 +8,13 @@
 #include "core.h"
 #include "buffer.c"
 #include "text.c"
-#include "layout.c"
+#include "render.c"
 
 /* ── Module definition ─────────────────────────────────────────────── */
 
 static PyMethodDef module_methods[] = {
-    /* text */
-    {"char_width",     mod_char_width,     METH_O,                       "Display width of a single character."},
-    {"display_width",  mod_display_width,  METH_O,                       "Display width of a string (ANSI-aware)."},
-    {"strip_ansi",     mod_strip_ansi,     METH_O,                       "Remove ANSI escape sequences from string."},
-    {"slice_at_width", mod_slice_at_width, METH_VARARGS,                 "Slice plain string to fit display width."},
-    {"truncate",       (PyCFunction)mod_truncate, METH_VARARGS | METH_KEYWORDS, "Truncate string to max visible width."},
-    /* layout */
-    {"place_at_offsets", mod_place_at_offsets, METH_O,      "Place strings at absolute offsets into a line."},
-    {"pad_columns",      mod_pad_columns,     METH_VARARGS, "Pad strings to column widths and join with spacing."},
-    {"flex_distribute",  mod_flex_distribute,  METH_VARARGS, "Resolve flex column widths from basis + grow."},
-    {"distribute",       mod_distribute,       METH_VARARGS, "Distribute total proportionally among weights."},
+    {"char_width",       mod_char_width,       METH_O,       "Display width of a single character (wcwidth)."},
+    {"render_to_buffer", mod_render_to_buffer, METH_VARARGS, "Render node tree directly into buffer cells."},
     {NULL}
 };
 

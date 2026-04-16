@@ -10,7 +10,7 @@
 
 import pytest
 
-from ttyz.ext import Buffer, pad_columns, place_at_offsets
+from ttyz.ext import Buffer
 from ttyz.style import (
     bg,
     bg_rgb,
@@ -197,14 +197,14 @@ def test_mismatched_dimensions_raises():
 
 def test_full_render_contains_content():
     buf = _buf(["hello", "world"])
-    result = buf.render_full()
+    result = buf.dump()
     assert "hello" in result
     assert "world" in result
 
 
 def test_full_render_includes_style():
     buf = _buf([bold("hello")])
-    result = buf.render_full()
+    result = buf.dump()
     assert "hello" in result
     assert len(result) > len("hello")  # has escape codes
 
@@ -234,15 +234,7 @@ def test_parse_row_out_of_range():
         Buffer(10, 2).parse_line(5, "hello")
 
 
-# ── Non-CSI escapes don't hang ──────────────────────────────────────
-
-
-def test_osc_in_hstack_no_hang():
-    from ttyz.ext import pad_columns
-
-    osc = "\033]8;;https://example.com\033\\click\033]8;;\033\\"
-    result = pad_columns([osc], [10], 0)
-    assert "click" in result
+# ── Non-CSI escapes ──────────────────────────────────────────────────
 
 
 def test_osc_skipped_in_cells():
@@ -251,33 +243,6 @@ def test_osc_skipped_in_cells():
     text = buf.row_text(0)
     assert text.startswith("hi")
     assert "http" not in text
-
-
-def test_osc_in_display_width():
-    from ttyz.ext import display_width as c_display_width
-
-    osc = "\033]8;;https://example.com\033\\click\033]8;;\033\\"
-    assert c_display_width(osc) == 5
-
-
-# ── pad_columns ──────────────────────────────────────────────────
-
-
-def test_hstack_ansi_clips_to_width():
-    from ttyz.ext import pad_columns
-    from ttyz.measure import display_width, strip_ansi
-
-    result = pad_columns([bold("hello world")], [5], 0)
-    assert display_width(strip_ansi(result)) <= 5
-
-
-def test_hstack_ansi_ascii_same_width():
-    from ttyz.ext import pad_columns
-    from ttyz.measure import display_width, strip_ansi
-
-    ascii_w = display_width(strip_ansi(pad_columns(["hello world"], [5], 0)))
-    ansi_w = display_width(strip_ansi(pad_columns([bold("hello world")], [5], 0)))
-    assert ascii_w == ansi_w
 
 
 # ── Standard ANSI colors ────────────────────────────────────────────
@@ -357,24 +322,3 @@ def test_reset_bg_color():
     styled = _buf(["\x1b[42mA\x1b[49mB"])
     plain = _buf(["AB"])
     assert "A" in styled.diff(plain)
-
-
-# ── pad_columns validation ───────────────────────────────────────────
-
-
-def test_pad_columns_mismatched_lengths():
-    with pytest.raises(ValueError):
-        pad_columns(["a"], [], 0)
-
-
-def test_pad_columns_negative_width():
-    result = pad_columns(["a"], [-1], 0)
-    assert isinstance(result, str)
-
-
-# ── place_at_offsets validation ──────────────────────────────────────
-
-
-def test_place_at_offsets_negative_width():
-    result = place_at_offsets([(0, -1, "abc")])
-    assert isinstance(result, str)

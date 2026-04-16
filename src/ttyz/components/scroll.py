@@ -1,25 +1,8 @@
-"""Scrollable viewport — renders only the visible children."""
+"""Scrollable viewport — data class, ScrollState, and factory."""
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
-from ttyz.components.base import Renderable
-
-
-def fill_viewport(items: Iterator[Renderable], w: int, h: int) -> list[str]:
-    """Render items into a viewport of h rows, stopping when full."""
-    lines: list[str] = []
-    for child in items:
-        rendered = child.render(w)
-        remaining = h - len(lines)
-        if len(rendered) >= remaining:
-            lines.extend(rendered[:remaining])
-            break
-        lines.extend(rendered)
-    if len(lines) < h:
-        lines.extend([""] * (h - len(lines)))
-    return lines
+from ttyz.components.base import Node
 
 
 class ScrollState:
@@ -63,39 +46,25 @@ class ScrollState:
         return max(0, self.total - self.height)
 
 
+class Scroll(Node):
+    """Scrollable viewport node."""
+
+    __slots__ = ("state",)
+    state: ScrollState
+
+
 def scroll(
-    *children: Renderable,
+    *children: Node,
     state: ScrollState,
     width: str | None = None,
     height: str | None = None,
     grow: int | None = None,
     bg: int | None = None,
     overflow: str = "visible",
-) -> Renderable:
-    children_list = list(children)
-
-    basis = max((c.flex_basis for c in children_list), default=0)
-
-    def render(w: int, h: int | None = None) -> list[str]:
-        if not isinstance(h, int) or h <= 0:
-            return []
-
-        state.height = h
-        state.total = len(children_list)
-        if state.follow:
-            state.offset = state.max_offset
-        state.offset = max(0, min(state.offset, state.max_offset))
-        if state.total > state.height and state.offset >= state.max_offset:
-            state.follow = True
-
-        return fill_viewport(iter(children_list[state.offset :]), w, h)
-
-    return Renderable(
-        render,
-        basis,
-        grow if grow is not None else 1,
-        width=width,
-        height=height,
-        bg=bg,
-        overflow=overflow,
+) -> Scroll:
+    node = Scroll(
+        children, grow if grow is not None else 1, width, height, bg, overflow
     )
+    node.state = state
+
+    return node

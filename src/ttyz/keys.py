@@ -271,11 +271,6 @@ def _decode_kitty_mods(mods_val: int) -> tuple[bool, bool, bool, bool]:
     return (bool(m & 1), bool(m & 2), bool(m & 4), bool(m & 8))
 
 
-def _kitty_key(name: str, shift: bool, alt: bool, ctrl: bool, sup: bool) -> Key:
-    """Build a Key from Kitty protocol data."""
-    return Key(name=name, shift=shift, alt=alt, ctrl=ctrl, super=sup)
-
-
 def parse_kitty_csi_u(params: str) -> Key | None:
     """Parse a Kitty keyboard protocol CSI u sequence.
 
@@ -283,21 +278,18 @@ def parse_kitty_csi_u(params: str) -> Key | None:
     """
     parts = params.split(";")
     # Parse key code (may have :shifted-key suffix)
-    key_part = parts[0].split(":")
-    try:
-        keycode = int(key_part[0])
-    except (ValueError, IndexError):
+    key_str = parts[0].split(":")[0]
+    if not key_str.isdigit():
         return None
+    keycode = int(key_str)
 
     # Parse modifiers
-    shift = alt = ctrl = sup = False
+    mods_val = 1
     if len(parts) >= 2:
-        mod_part = parts[1].split(":")
-        try:
-            mods_val = int(mod_part[0]) if mod_part[0] else 1
-        except ValueError:
-            mods_val = 1
-        shift, alt, ctrl, sup = _decode_kitty_mods(mods_val)
+        mod_str = parts[1].split(":")[0]
+        if mod_str.isdigit():
+            mods_val = int(mod_str)
+    shift, alt, ctrl, sup = _decode_kitty_mods(mods_val)
 
     # Resolve key name
     name = _KITTY_SPECIAL.get(keycode)
@@ -310,7 +302,7 @@ def parse_kitty_csi_u(params: str) -> Key | None:
         else:
             return None
 
-    return _kitty_key(name, shift, alt, ctrl, sup)
+    return Key(name=name, shift=shift, alt=alt, ctrl=ctrl, super=sup)
 
 
 # ── Reader ───────────────────────────────────────────────────────────
@@ -416,12 +408,20 @@ class KeyReader:
             if idx >= 0:
                 raw = bytes(self._buf[:idx])
                 del self._buf[: idx + 6]
-            elif not self._fill(0.1):
+                return Paste(raw.decode("utf-8", errors="replace").replace("\r", "\n"))
+            # _fill short-circuits when _buf is non-empty, so read
+            # directly from the fd to accumulate more paste data.
+            try:
+                ready = select.select([self._fd], [], [], 0.1)[0]
+            except InterruptedError:
+                ready = []
+            if ready:
+                self._buf.extend(os.read(self._fd, 4096))
+            else:
+                # Timeout — end marker never arrived; return what we have.
                 raw = bytes(self._buf)
                 self._buf.clear()
-            else:
-                continue
-            return Paste(raw.decode("utf-8", errors="replace").replace("\r", "\n"))
+                return Paste(raw.decode("utf-8", errors="replace").replace("\r", "\n"))
 
 
 # ── CSI parsing ──────────────────────────────────────────────────────
@@ -459,48 +459,27 @@ def parse_csi(csi: bytes) -> Event | None:
             return Key(legacy)
 
     # Kitty modified keys
+    return _parse_kitty_modified(csi)
+
+
+def _parse_kitty_modified(csi: bytes) -> Key | None:
+    """Parse Kitty modified key (tilde or letter-terminated CSI)."""
+    params = csi[:-1].decode("ascii", errors="replace")
     final = csi[-1]
+    parts = params.split(";")
+    if len(parts) < 2:
+        return None
+    mod_str = parts[1].split(":")[0]
+    mods_val = int(mod_str) if mod_str.isdigit() else 1
     if final == ord("~"):
-        return _parse_kitty_tilde(csi)
-    if 0x40 <= final <= 0x7E:
-        return _parse_kitty_letter(csi)
-    return None
-
-
-def _parse_kitty_tilde(csi: bytes) -> Key | None:
-    """Parse CSI number ; modifiers ~ (Kitty modified function/special keys)."""
-    params = csi[:-1].decode("ascii", errors="replace")
-    parts = params.split(";")
-    if len(parts) < 2:
-        return None
-    try:
-        keynum = int(parts[0])
-        mods_val = int(parts[1].split(":")[0]) if parts[1] else 1
-    except ValueError:
-        return None
-    name = _KITTY_TILDE.get(keynum)
+        key_str = parts[0]
+        name = _KITTY_TILDE.get(int(key_str)) if key_str.isdigit() else None
+    else:
+        name = _KITTY_LETTER.get(final)
     if name is None:
         return None
     shift, alt, ctrl, sup = _decode_kitty_mods(mods_val)
-    return _kitty_key(name, shift, alt, ctrl, sup)
-
-
-def _parse_kitty_letter(csi: bytes) -> Key | None:
-    """Parse CSI 1 ; modifiers [A-Z] (Kitty modified arrow/function keys)."""
-    params = csi[:-1].decode("ascii", errors="replace")
-    final = csi[-1]
-    parts = params.split(";")
-    if len(parts) < 2:
-        return None
-    try:
-        mods_val = int(parts[1].split(":")[0]) if parts[1] else 1
-    except ValueError:
-        return None
-    name = _KITTY_LETTER.get(final)
-    if name is None:
-        return None
-    shift, alt, ctrl, sup = _decode_kitty_mods(mods_val)
-    return _kitty_key(name, shift, alt, ctrl, sup)
+    return Key(name=name, shift=shift, alt=alt, ctrl=ctrl, super=sup)
 
 
 def parse_sgr_mouse(payload: bytes) -> Mouse | None:

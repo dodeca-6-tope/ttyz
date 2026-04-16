@@ -15,6 +15,7 @@ from types import FrameType
 from typing import Any
 
 from ttyz.control import Command
+from ttyz.ext import Buffer, render_to_buffer
 from ttyz.keys import (
     KITTY_DISABLE,
     KITTY_ENABLE,
@@ -23,7 +24,48 @@ from ttyz.keys import (
     KeyReader,
     Resize,
 )
-from ttyz.screen import Screen
+
+
+class Screen:
+    """Cell-based terminal screen writer with cell-level diffing."""
+
+    def __init__(
+        self,
+        write: Callable[[bytes], object] = sys.stdout.buffer.write,
+        flush: Callable[[], object] = sys.stdout.buffer.flush,
+    ) -> None:
+        self._write = write
+        self._flush = flush
+        self._prev: Buffer | None = None
+        self._rows: int = 0
+        self._cols: int = 0
+
+    def invalidate(self) -> None:
+        """Force a full redraw on next render."""
+        self._prev = None
+
+    def render(self, node: object) -> None:
+        """Render a node tree to the terminal with cell-level diffing."""
+        size = os.get_terminal_size()
+        rows: int = size.lines
+        cols: int = size.columns
+        prev = self._prev
+
+        buf = Buffer(cols, rows)
+        render_to_buffer(node, buf)
+
+        if prev is None or (rows, cols) != (self._rows, self._cols):
+            body = buf.dump()
+        else:
+            body = buf.diff(prev)
+
+        self._write(f"\033[?2026h{body}\033[?2026l".encode())
+        self._flush()
+
+        self._prev = buf
+        self._rows = rows
+        self._cols = cols
+
 
 _ENTER = "\033[?1049h\033[?25l\033[?7l\033[?2004h\033[?1004h\033[?1000h\033[?1006h"
 _EXIT = "\033[?1006l\033[?1000l\033[?1004l\033[?2004l\033[?7h\033[?25h\033[?1049l"
@@ -98,9 +140,9 @@ class TTY:
             return Resize(cols=size.columns, lines=size.lines)
         return result
 
-    def draw(self, lines: list[str]) -> None:
-        """Draw a frame to the terminal."""
-        self._screen.render(lines)
+    def draw(self, node: object) -> None:
+        """Draw a node tree to the terminal."""
+        self._screen.render(node)
 
     def write(self, *commands: Command) -> None:
         """Write control commands to the terminal.
