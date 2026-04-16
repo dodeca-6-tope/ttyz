@@ -1,4 +1,4 @@
-"""Terminal — TTY lifecycle that composes Screen and KeyReader."""
+"""Terminal — full-screen TTY lifecycle with cell-level diffing."""
 
 from __future__ import annotations
 
@@ -25,48 +25,6 @@ from ttyz.keys import (
     Resize,
 )
 
-
-class Screen:
-    """Cell-based terminal screen writer with cell-level diffing."""
-
-    def __init__(
-        self,
-        write: Callable[[bytes], object] = sys.stdout.buffer.write,
-        flush: Callable[[], object] = sys.stdout.buffer.flush,
-    ) -> None:
-        self._write = write
-        self._flush = flush
-        self._prev: Buffer | None = None
-        self._rows: int = 0
-        self._cols: int = 0
-
-    def invalidate(self) -> None:
-        """Force a full redraw on next render."""
-        self._prev = None
-
-    def render(self, node: object) -> None:
-        """Render a node tree to the terminal with cell-level diffing."""
-        size = os.get_terminal_size()
-        rows: int = size.lines
-        cols: int = size.columns
-        prev = self._prev
-
-        buf = Buffer(cols, rows)
-        render_to_buffer(node, buf)
-
-        if prev is None or (rows, cols) != (self._rows, self._cols):
-            body = buf.dump()
-        else:
-            body = buf.diff(prev)
-
-        self._write(f"\033[?2026h{body}\033[?2026l".encode())
-        self._flush()
-
-        self._prev = buf
-        self._rows = rows
-        self._cols = cols
-
-
 _ENTER = "\033[?1049h\033[?25l\033[?7l\033[?2004h\033[?1004h\033[?1000h\033[?1006h"
 _EXIT = "\033[?1006l\033[?1000l\033[?1004l\033[?2004l\033[?7h\033[?25h\033[?1049l"
 
@@ -74,7 +32,7 @@ _EXIT = "\033[?1006l\033[?1000l\033[?1004l\033[?2004l\033[?7h\033[?25h\033[?1049
 class TTY:
     """Context manager for full-screen terminal UI sessions."""
 
-    def __init__(self, screen: Screen | None = None) -> None:
+    def __init__(self) -> None:
         self._fd: int | None = None
         self._saved: list[Any] | None = None
         self._active = False
@@ -82,7 +40,7 @@ class TTY:
         self._kitty = False
         self._prev_sigwinch: Callable[[int, FrameType | None], Any] | int | None = None
         self._keys: KeyReader | None = None
-        self._screen = screen or Screen()
+        self._prev: Buffer | None = None
         self._wake_r, self._wake_w = os.pipe()
         atexit.register(self.cleanup)
 
@@ -104,7 +62,7 @@ class TTY:
         """Leave alt screen, show cursor, restore terminal."""
         if self._active:
             self._active = False
-            self._screen.invalidate()
+            self._prev = None
             if self._kitty:
                 sys.stdout.write(KITTY_DISABLE)
                 self._kitty = False
@@ -124,7 +82,7 @@ class TTY:
 
     def _on_sigwinch(self, signum: int, frame: FrameType | None) -> None:
         self._resized = True
-        self._screen.invalidate()
+        self._prev = None
 
     def readkey(self, timeout: float = 1 / 60) -> Event | None:
         """Read a single input event. Returns None on timeout."""
@@ -141,8 +99,22 @@ class TTY:
         return result
 
     def draw(self, node: object) -> None:
-        """Draw a node tree to the terminal."""
-        self._screen.render(node)
+        """Draw a node tree to the terminal with cell-level diffing."""
+        size = os.get_terminal_size()
+        prev = self._prev
+
+        buf = Buffer(size.columns, size.lines)
+        render_to_buffer(node, buf)
+
+        if prev is None or (buf.width, buf.height) != (prev.width, prev.height):
+            body = f"\033[H\033[0m{buf.dump()}"
+        else:
+            body = buf.diff(prev)
+
+        sys.stdout.buffer.write(f"\033[?2026h{body}\033[?2026l".encode())
+        sys.stdout.buffer.flush()
+
+        self._prev = buf
 
     def write(self, *commands: Command) -> None:
         """Write control commands to the terminal.
@@ -181,7 +153,7 @@ class TTY:
         if self._kitty:
             sys.stdout.write(KITTY_ENABLE)
             sys.stdout.flush()
-        self._screen.invalidate()
+        self._prev = None
 
     def kitty_supported(self) -> bool:
         """Check if terminal supports Kitty keyboard protocol."""

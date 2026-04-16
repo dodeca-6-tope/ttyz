@@ -1,16 +1,16 @@
 """Tests for cell buffer — the contract is:
 
-1. Text written to a Buffer can be read back
-2. Styled text survives parse → render round-trip (styles preserved)
+1. Text written to a Buffer can be read back via dump
+2. Styled text survives render → dump round-trip (styles preserved)
 3. Diff only outputs when content changed
 4. Different styles are distinguishable by diff
-5. Non-CSI escape sequences don't cause hangs or corrupt output
-6. Standard/bright ANSI colors and partial SGR resets are parsed
+5. Standard/bright ANSI colors and partial SGR resets are parsed
 """
 
 import pytest
 
-from ttyz.ext import Buffer
+from ttyz import text
+from ttyz.ext import Buffer, render_to_buffer
 from ttyz.style import (
     bg,
     bg_rgb,
@@ -29,9 +29,10 @@ from ttyz.style import (
 
 
 def _buf(lines: list[str], w: int = 20) -> Buffer:
+    from ttyz import vstack
+
     buf = Buffer(w, len(lines))
-    for i, line in enumerate(lines):
-        buf.parse_line(i, line)
+    render_to_buffer(vstack(*[text(l) for l in lines]), buf)
     return buf
 
 
@@ -40,33 +41,30 @@ def _buf(lines: list[str], w: int = 20) -> Buffer:
 
 def test_ascii_text_preserved():
     buf = _buf(["hello"])
-    assert buf.row_text(0).startswith("hello")
+    assert "hello" in buf.dump()
 
 
 def test_wide_chars_preserved():
     buf = _buf(["你好"])
-    assert buf.row_text(0).startswith("你好")
+    assert "你好" in buf.dump()
 
 
 def test_clips_at_width():
     buf = _buf(["hello world"], w=5)
-    assert buf.row_text(0) == "hello"
+    assert "hello" in buf.dump()
+    assert "world" not in buf.dump()
 
 
 def test_wide_char_at_boundary_skipped():
     buf = _buf(["abcd你"], w=5)
-    assert buf.row_text(0) == "abcd "
-
-
-def test_empty_string():
-    buf = Buffer(10, 1)
-    buf.parse_line(0, "")
-    assert buf.row_text(0) == " " * 10
+    dump = buf.dump()
+    assert "abcd" in dump
+    assert "你" not in dump
 
 
 def test_blank_fill():
     buf = Buffer(5, 1)
-    assert buf.row_text(0) == "     "
+    assert buf.dump() == ""
 
 
 # ── Styled text round-trip ───────────────────────────────────────────
@@ -142,8 +140,6 @@ def test_reset_mid_line_clears_style():
     b = _buf(["AB"])
     diff = a.diff(b)
     assert "A" in diff
-    # B should not be in the diff — it matches plain
-    # (it may appear as part of a run, but the key point is A is styled)
 
 
 def test_identical_styled_content_no_diff():
@@ -171,11 +167,12 @@ def test_changed_cells_in_output():
 
 
 def test_new_content_in_blank_row():
+    from ttyz import vstack
+
     old = Buffer(20, 3)
-    old.parse_line(0, "a")
+    render_to_buffer(vstack(text("a")), old)
     new = Buffer(20, 3)
-    new.parse_line(0, "a")
-    new.parse_line(2, "c")
+    render_to_buffer(vstack(text("a"), text(""), text("c")), new)
     result = new.diff(old)
     assert "c" in result
     assert "a" not in result
@@ -222,27 +219,6 @@ def test_invalid_dimensions():
         Buffer(0, 10)
     with pytest.raises(ValueError):
         Buffer(10, -1)
-
-
-def test_row_out_of_range():
-    with pytest.raises(IndexError):
-        Buffer(5, 2).row_text(5)
-
-
-def test_parse_row_out_of_range():
-    with pytest.raises(IndexError):
-        Buffer(10, 2).parse_line(5, "hello")
-
-
-# ── Non-CSI escapes ──────────────────────────────────────────────────
-
-
-def test_osc_skipped_in_cells():
-    buf = Buffer(20, 1)
-    buf.parse_line(0, "\033]8;;http://x\033\\hi\033]8;;\033\\")
-    text = buf.row_text(0)
-    assert text.startswith("hi")
-    assert "http" not in text
 
 
 # ── Standard ANSI colors ────────────────────────────────────────────

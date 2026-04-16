@@ -20,7 +20,7 @@ def render(node: object, w: int, h: int | None = None) -> list[str]:
     bh = h if h is not None else 100
     buf = Buffer(w, bh)
     rows = render_to_buffer(node, buf, h if h is not None else -1)
-    return [buf.row_styled(i) for i in range(rows)]
+    return buf.dump().split("\n")[:rows]
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:

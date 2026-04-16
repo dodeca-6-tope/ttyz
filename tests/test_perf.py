@@ -40,84 +40,83 @@ WIDTH = 200
 HEIGHT = 50
 
 
-# ── cell buffer: parse_line ───────────────────────────────────────
+# ── render_to_buffer ─────────────────────────────────────────────────
 
 
-def test_parse_line_c_ascii():
-    """Guard: parse_line C ASCII fast path — direct cell fill."""
-    buf = Buffer(WIDTH, HEIGHT)
-    lines = ["x" * WIDTH] * HEIGHT
-
-    def run():
-        for i, l in enumerate(lines):
-            buf.parse_line(i, l)
-
-    elapsed = _timed(run, iterations=1000)
-    assert elapsed < 0.02, f"parse ASCII 1k frames took {elapsed:.3f}s"
-
-
-def test_parse_line_c_ansi():
-    """Guard: parse_line C ANSI SGR parsing performance."""
-    buf = Buffer(WIDTH, HEIGHT)
-    lines = [f"\033[1m{'a' * 196}\033[0m"] * HEIGHT
+def test_render_ascii_frame():
+    """Guard: render_to_buffer ASCII performance."""
+    tree = vstack(*[text("x" * WIDTH) for _ in range(HEIGHT)])
 
     def run():
-        for i, l in enumerate(lines):
-            buf.parse_line(i, l)
+        buf = Buffer(WIDTH, HEIGHT)
+        render_to_buffer(tree, buf)
 
     elapsed = _timed(run, iterations=1000)
-    assert elapsed < 0.03, f"parse ANSI 1k frames took {elapsed:.3f}s"
+    assert elapsed < 0.1, f"render ASCII 1k frames took {elapsed:.3f}s"
+
+
+def test_render_ansi_frame():
+    """Guard: render_to_buffer ANSI SGR performance."""
+    tree = vstack(*[text(f"\033[1m{'a' * 196}\033[0m") for _ in range(HEIGHT)])
+
+    def run():
+        buf = Buffer(WIDTH, HEIGHT)
+        render_to_buffer(tree, buf)
+
+    elapsed = _timed(run, iterations=1000)
+    assert elapsed < 0.15, f"render ANSI 1k frames took {elapsed:.3f}s"
 
 
 # ── Buffer.diff ──────────────────────────────────────────────────────
 
 
-def test_diff_full_frame():
-    """Guard: diff performance on fully changed frames."""
+def _make_pair(old_char: str, new_char: str) -> tuple[Buffer, Buffer]:
+    old_tree = vstack(*[text(old_char * WIDTH) for _ in range(HEIGHT)])
+    new_tree = vstack(*[text(new_char * WIDTH) for _ in range(HEIGHT)])
     old = Buffer(WIDTH, HEIGHT)
     new = Buffer(WIDTH, HEIGHT)
-    for i in range(HEIGHT):
-        old.parse_line(i, "a" * WIDTH)
-        new.parse_line(i, "b" * WIDTH)
+    render_to_buffer(old_tree, old)
+    render_to_buffer(new_tree, new)
+    return old, new
+
+
+def test_diff_full_frame():
+    """Guard: diff performance on fully changed frames."""
+    old, new = _make_pair("a", "b")
     elapsed = _timed(lambda: new.diff(old), iterations=100)
     assert elapsed < 0.008, f"diff changed 100 took {elapsed:.3f}s"
 
 
 def test_diff_identical_emits_nothing():
     """Identical frames must produce zero output bytes."""
-    a = Buffer(WIDTH, HEIGHT)
-    b = Buffer(WIDTH, HEIGHT)
-    for i in range(HEIGHT):
-        a.parse_line(i, "x" * WIDTH)
-        b.parse_line(i, "x" * WIDTH)
-    assert a.diff(b) == ""
+    old, new = _make_pair("x", "x")
+    assert new.diff(old) == ""
 
 
 def test_diff_single_cell_output_small():
     """Changing one cell should emit far less than a full line."""
+    tree_a = vstack(*[text("x" * WIDTH) for _ in range(HEIGHT)])
+    tree_b = vstack(
+        text("y" + "x" * (WIDTH - 1)), *[text("x" * WIDTH) for _ in range(HEIGHT - 1)]
+    )
     a = Buffer(WIDTH, HEIGHT)
     b = Buffer(WIDTH, HEIGHT)
-    for i in range(HEIGHT):
-        a.parse_line(i, "x" * WIDTH)
-        b.parse_line(i, "x" * WIDTH)
-    b.parse_line(0, "y" + "x" * (WIDTH - 1))
+    render_to_buffer(tree_a, a)
+    render_to_buffer(tree_b, b)
     out = b.diff(a)
     assert len(out) < 20, f"single cell diff was {len(out)} bytes"
 
 
 def test_diff_one_line_output_bounded():
     """Changing one full line should emit roughly one line of output."""
+    tree_a = vstack(*[text("x" * WIDTH) for _ in range(HEIGHT)])
+    tree_b = vstack(text("z" * WIDTH), *[text("x" * WIDTH) for _ in range(HEIGHT - 1)])
     a = Buffer(WIDTH, HEIGHT)
     b = Buffer(WIDTH, HEIGHT)
-    for i in range(HEIGHT):
-        a.parse_line(i, "x" * WIDTH)
-        b.parse_line(i, "x" * WIDTH)
-    b.parse_line(0, "z" * WIDTH)
+    render_to_buffer(tree_a, a)
+    render_to_buffer(tree_b, b)
     out = b.diff(a)
     assert len(out) < WIDTH + 50, f"one-line diff was {len(out)} bytes"
-
-
-# ── render_to_buffer ─────────────────────────────────────────────────
 
 
 def test_render_nested_hstack():

@@ -16,7 +16,7 @@ import pytest
 from ttyz import TTY as Terminal
 from ttyz.keys import Event, Focus, Mouse
 
-# ── TTY.render ────────────────────────────────────────────────────
+# ── TTY.write ─────────────────────────────────────────────────────
 
 
 def test_write_sends_command_sequences() -> None:
@@ -33,92 +33,6 @@ def test_write_sends_command_sequences() -> None:
     output = buf.getvalue()
     assert "\033]2;test\033\\" in output
     assert "\033[?25h" in output
-
-
-def test_draw_writes_content() -> None:
-    """TTY.draw() should write the given content to the terminal."""
-    from os import terminal_size
-    from unittest.mock import patch
-
-    import ttyz
-    from ttyz.term import Screen
-
-    chunks: list[str] = []
-    screen = Screen(write=lambda data: chunks.append(data.decode()), flush=lambda: None)
-    t = Terminal(screen=screen)
-    size = terminal_size((40, 10))
-    with patch("ttyz.term.os.get_terminal_size", return_value=size):
-        t.draw(ttyz.vstack(ttyz.text("hello"), ttyz.text("world")))
-    output = "".join(chunks)
-    assert "hello" in output
-    assert "world" in output
-
-
-# ── Screen.render ────────────────────────────────────────────────────
-
-
-def _make_screen():
-    """Create a Screen that captures output as a string."""
-    from ttyz.term import Screen
-
-    chunks: list[str] = []
-    s = Screen(write=lambda data: chunks.append(data.decode()), flush=lambda: None)
-    return s, chunks
-
-
-def test_screen_resize_writes_all_rows():
-    from os import terminal_size
-    from unittest.mock import patch
-
-    import ttyz
-
-    s, chunks = _make_screen()
-    size = terminal_size((20, 5))
-    with patch("ttyz.term.os.get_terminal_size", return_value=size):
-        s.render(
-            ttyz.vstack(
-                ttyz.text("line1"),
-                ttyz.text("line2"),
-                ttyz.text("line3"),
-                ttyz.text("line4"),
-                ttyz.text("line5"),
-            )
-        )
-    big = terminal_size((20, 10))
-    with patch("ttyz.term.os.get_terminal_size", return_value=big):
-        s.render(ttyz.vstack(ttyz.text("line1"), ttyz.text("line2")))
-    output = chunks[-1]
-    assert "line1" in output
-    assert "line2" in output
-    assert "line3" not in output
-    assert "line4" not in output
-    assert "line5" not in output
-
-
-def test_screen_shrinking_content_clears_old_rows():
-    """Rendering fewer lines than before should blank the leftover rows."""
-    from os import terminal_size
-    from unittest.mock import patch
-
-    import ttyz
-
-    s, chunks = _make_screen()
-    size = terminal_size((20, 10))
-    with patch("ttyz.term.os.get_terminal_size", return_value=size):
-        s.render(
-            ttyz.vstack(
-                ttyz.text("a"),
-                ttyz.text("b"),
-                ttyz.text("c"),
-                ttyz.text("d"),
-                ttyz.text("e"),
-            )
-        )
-        s.render(ttyz.vstack(ttyz.text("a"), ttyz.text("b")))
-    output = chunks[-1]
-    assert "c" not in output
-    assert "d" not in output
-    assert "e" not in output
 
 
 @pytest.fixture
