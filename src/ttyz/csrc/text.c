@@ -1,20 +1,9 @@
 /*
  * text.c — Text measurement, transformation, and rendering.
  *
- * Pure string utilities (display_width, char_width, strip_ansi, truncate,
+ * Pure string utilities (display_width, strip_ansi, truncate,
  * slice_at_width) plus TextRender type.
  */
-
-/* ── char_width ──────────────────────────────────────────────────── */
-
-static PyObject *mod_char_width(PyObject *self, PyObject *arg) {
-    if (!PyUnicode_Check(arg) || PyUnicode_GET_LENGTH(arg) != 1) {
-        PyErr_SetString(PyExc_TypeError, "expected a single character");
-        return NULL;
-    }
-    Py_UCS4 ch = PyUnicode_READ_CHAR(arg, 0);
-    return PyLong_FromLong(cwidth(ch));
-}
 
 /* ── display_width ────────────────────────────────────────────────── */
 

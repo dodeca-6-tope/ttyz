@@ -7,24 +7,13 @@ and displays text with styling, wide characters, and escape sequences.
 from conftest import SnapFn
 
 import ttyz as t
-from ttyz import Buffer, char_width, render_to_buffer
+from ttyz import Buffer, render_to_buffer
 
 
 def _row(node: object, w: int = 40, h: int = 1) -> str:
     buf = Buffer(w, h)
     render_to_buffer(node, buf)
     return buf.row_text(0)
-
-
-# ── char_width (the one C primitive) ─────────────────────────────────
-
-
-def test_char_width_ascii():
-    assert char_width("a") == 1
-
-
-def test_char_width_wide():
-    assert char_width("你") == 2
 
 
 # ── Plain text fills correct width ──────────────────────────────────

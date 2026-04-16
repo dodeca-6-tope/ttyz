@@ -13,7 +13,6 @@
 /* ── Module definition ─────────────────────────────────────────────── */
 
 static PyMethodDef module_methods[] = {
-    {"char_width",       mod_char_width,       METH_O,       "Display width of a single character (wcwidth)."},
     {"render_to_buffer", mod_render_to_buffer, METH_VARARGS, "Render node tree directly into buffer cells."},
     {NULL}
 };

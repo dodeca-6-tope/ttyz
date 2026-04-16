@@ -52,7 +52,7 @@ from ttyz.control import (
     SetTitle,
     ShowCursor,
 )
-from ttyz.ext import Buffer, char_width, render_to_buffer
+from ttyz.ext import Buffer, render_to_buffer
 from ttyz.keys import Event, Focus, Key, Mouse, Paste, Resize
 from ttyz.style import (
     bg,
@@ -73,7 +73,6 @@ from ttyz.term import TTY
 
 __all__ = [
     "Buffer",
-    "char_width",
     "Command",
     "Custom",
     "CursorBack",
