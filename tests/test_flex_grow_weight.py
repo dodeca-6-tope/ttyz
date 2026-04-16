@@ -81,6 +81,10 @@ def test_table_weighted_with_fixed(snap: SnapFn):
 # ── Protocol ───────────────────────────────────────────────────────
 
 
+def test_hstack_text_bg_grow_fills_width(snap: SnapFn):
+    snap(hstack(text("A", grow=1, bg=8), text("B", grow=2, bg=6)), 30)
+
+
 def test_default_flex_grow_is_zero():
     assert text("").grow == 0
 

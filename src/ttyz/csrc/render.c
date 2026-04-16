@@ -1873,8 +1873,7 @@ static int c_render_framed(RenderCtx *ctx, PyTypeObject *tp,
         bg = (Style){COLOR_EMPTY,
                      {COLOR_INDEXED, (uint8_t)bgc, 0, 0},
                      0, {0, 0}};
-        if (h >= 0)
-            rc_fill_region(ctx->buf, x, y, w, h, bg);
+        rc_fill_region(ctx->buf, x, y, w, h >= 0 ? h : 1, bg);
     }
 
     if (has_explicit_w && clips && h >= 0)
