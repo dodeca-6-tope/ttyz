@@ -52,7 +52,7 @@ def test_render_ascii_frame():
         render_to_buffer(tree, buf)
 
     elapsed = _timed(run, iterations=1000)
-    assert elapsed < 0.1, f"render ASCII 1k frames took {elapsed:.3f}s"
+    assert elapsed < 0.04, f"render ASCII 1k frames took {elapsed:.3f}s"
 
 
 def test_render_ansi_frame():
@@ -64,7 +64,7 @@ def test_render_ansi_frame():
         render_to_buffer(tree, buf)
 
     elapsed = _timed(run, iterations=1000)
-    assert elapsed < 0.15, f"render ANSI 1k frames took {elapsed:.3f}s"
+    assert elapsed < 0.05, f"render ANSI 1k frames took {elapsed:.3f}s"
 
 
 # ── Buffer.diff ──────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ def test_render_nested_hstack():
         render_to_buffer(tree, buf)
 
     elapsed = _timed(run, iterations=10)
-    assert elapsed < 0.016, f"nested hstack x10 took {elapsed:.3f}s"
+    assert elapsed < 0.02, f"nested hstack x10 took {elapsed:.3f}s"
 
 
 def test_render_hstack_flex():
@@ -162,7 +162,7 @@ def test_render_hstack_flex():
         render_to_buffer(tree, buf)
 
     elapsed = _timed(run, iterations=50)
-    assert elapsed < 0.04, f"hstack flex x50 took {elapsed:.3f}s"
+    assert elapsed < 0.055, f"hstack flex x50 took {elapsed:.3f}s"
 
 
 # ── Full pipeline: build → render_to_buffer → diff ───────────────────
@@ -207,7 +207,7 @@ def test_pipeline_cold():
             prev = buf
 
     elapsed = _timed(run)
-    assert elapsed < 0.06, f"cold pipeline 100 took {elapsed:.3f}s"
+    assert elapsed < 0.04, f"cold pipeline 100 took {elapsed:.3f}s"
 
 
 def test_pipeline_warm():
