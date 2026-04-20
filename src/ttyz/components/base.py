@@ -8,7 +8,7 @@ no render/measure logic — all rendering lives in ``render.py``.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import Literal, TypeAlias
+from typing import Generic, Literal, TypeAlias, TypeVar
 
 RenderFn: TypeAlias = Callable[..., list[str]]
 Overflow: TypeAlias = Literal["visible", "hidden"]
@@ -55,6 +55,31 @@ def resolve_children(
     if len(children) == 1 and not isinstance(children[0], Node):
         return children[0]  # type: ignore[return-value]
     return children  # type: ignore[return-value]
+
+
+T = TypeVar("T")
+
+
+class LazyChildren(Sequence["Node"], Generic[T]):
+    """Sequence[Node] adapter — produces ``produce(items[i], i)`` on demand.
+
+    Shared by ``foreach`` and ``list`` as the bridge between a user's
+    ``(items, render_fn)`` pair and a renderer-facing ``Sequence[Node]``.
+    """
+
+    __slots__ = ("_items", "_produce")
+
+    def __init__(self, items: Sequence[T], produce: Callable[[T, int], Node]) -> None:
+        self._items = items
+        self._produce = produce
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __getitem__(self, i: int | slice) -> Node:  # type: ignore[override]
+        if isinstance(i, slice):
+            raise TypeError("LazyChildren does not support slicing")
+        return self._produce(self._items[i], i)
 
 
 class Custom(Node):

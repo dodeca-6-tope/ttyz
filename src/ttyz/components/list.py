@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import builtins
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Generic, TypeVar
 
-from ttyz.components.base import Node, Overflow
+from ttyz.components.base import LazyChildren, Node, Overflow
 from ttyz.components.keyed import Keyed
 from ttyz.components.scroll import Scroll, ScrollState, scroll
 
@@ -14,10 +13,15 @@ T = TypeVar("T", bound=Keyed)
 
 
 class ListState(Generic[T]):
-    """Holds items and cursor position for a List component."""
+    """Holds items and cursor position for a List component.
 
-    def __init__(self, items: builtins.list[T] | tuple[T, ...] = ()) -> None:
-        self.items = builtins.list(items)
+    ``items`` is any ``Sequence[T]`` — a list, tuple, range, or a lazy
+    custom Sequence.  No copy is made, so mutations to the underlying
+    list are visible on the next render.
+    """
+
+    def __init__(self, items: Sequence[T] = ()) -> None:
+        self.items: Sequence[T] = items
         self.cursor = 0
         self.scroll = ScrollState()
 
@@ -34,9 +38,9 @@ class ListState(Generic[T]):
     def move_to(self, index: int) -> None:
         self.cursor = self.clamp(index)
 
-    def set_items(self, items: builtins.list[T] | tuple[T, ...]) -> None:
+    def set_items(self, items: Sequence[T]) -> None:
         prev = self.current.key if self.current else None
-        self.items = builtins.list(items)
+        self.items = items
         if prev is not None:
             idx = next(
                 (i for i, x in enumerate(self.items) if x.key == prev),
@@ -70,11 +74,11 @@ def list(
 ) -> Scroll:
     state.cursor = state.clamp(state.cursor)
     state.scroll.scroll_to_visible(state.cursor)
-    children = [
-        render_fn(item, i == state.cursor) for i, item in enumerate(state.items)
-    ]
     return scroll(
-        *children,
+        LazyChildren(
+            state.items,
+            lambda item, i: render_fn(item, i == state.cursor),
+        ),
         state=state.scroll,
         width=width,
         height=height,
