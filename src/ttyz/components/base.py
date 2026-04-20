@@ -44,6 +44,19 @@ class Node:
         self.overflow = overflow
 
 
+def resolve_children(
+    children: tuple[object, ...],
+) -> Sequence[Node]:
+    """Dispatch rule shared by container factories.
+
+    Single non-Node positional → that object IS the Sequence backing
+    (lazy-friendly).  Otherwise varargs of Nodes → the tuple is the backing.
+    """
+    if len(children) == 1 and not isinstance(children[0], Node):
+        return children[0]  # type: ignore[return-value]
+    return children  # type: ignore[return-value]
+
+
 class Custom(Node):
     """Node wrapping a raw render function — escape hatch for custom components."""
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from ttyz.components.base import Align, Node, Overflow
+from collections.abc import Sequence
+
+from ttyz.components.base import Align, Node, Overflow, resolve_children
 
 
 class ZStack(Node):
@@ -14,7 +16,7 @@ class ZStack(Node):
 
 
 def zstack(
-    *children: Node,
+    *children: Node | Sequence[Node],
     justify_content: Align = "start",
     align_items: Align = "start",
     width: str | None = None,
@@ -23,7 +25,7 @@ def zstack(
     bg: int | None = None,
     overflow: Overflow = "visible",
 ) -> ZStack:
-    node = ZStack(children, grow, width, height, bg, overflow)
+    node = ZStack(resolve_children(children), grow, width, height, bg, overflow)
     node.justify_content = justify_content
     node.align_items = align_items
     return node

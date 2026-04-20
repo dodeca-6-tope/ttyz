@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from ttyz.components.base import Align, Justify, Node, Overflow
+from collections.abc import Sequence
+
+from ttyz.components.base import Align, Justify, Node, Overflow, resolve_children
 
 
 class HStack(Node):
@@ -16,7 +18,7 @@ class HStack(Node):
 
 
 def hstack(
-    *children: Node,
+    *children: Node | Sequence[Node],
     spacing: int = 0,
     justify_content: Justify = "start",
     align_items: Align = "start",
@@ -27,7 +29,7 @@ def hstack(
     bg: int | None = None,
     overflow: Overflow = "visible",
 ) -> HStack:
-    node = HStack(children, grow, width, height, bg, overflow)
+    node = HStack(resolve_children(children), grow, width, height, bg, overflow)
     node.spacing = spacing
     node.justify_content = justify_content
     node.align_items = align_items
