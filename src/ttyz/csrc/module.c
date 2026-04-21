@@ -1,14 +1,22 @@
 /*
  * module.c — C extension entry point for ttyz.ext.
  *
- * Single compilation unit: includes the split source files and
- * registers all types and functions into the Python module.
+ * Unity build: includes every implementation file into a single TU so
+ * all `static` helpers can inline across "file" boundaries.  The
+ * include order encodes the dependency DAG.
  */
 
-#include "core.h"
-#include "buffer.c"
-#include "text.c"
-#include "render.c"
+/* Headers: primitives → utilities → codecs. */
+#include "core.h"     /* Color, Style, Cell, CellExtra types */
+#include "outbuf.h"   /* growable byte buffer */
+#include "ansi.h"     /* UTF-8, wcwidth, ANSI scanning */
+#include "sgr.h"      /* SGR encode/decode (uses outbuf + ansi) */
+
+/* Implementation: buffer → cells → text → render. */
+#include "buffer.c"   /* Buffer type: cells ↔ ANSI */
+#include "cells.c"    /* ANSI string → cells primitives */
+#include "text.c"     /* line-level transforms (truncate/wrap) */
+#include "render.c"   /* node-tree measure + render */
 
 /* ── Module definition ─────────────────────────────────────────────── */
 
