@@ -33,19 +33,13 @@ static PyTypeObject *ForeachType_;
 static PyTypeObject *ScrollType_;
 static PyTypeObject *ScrollbarType_;
 static PyTypeObject *TableType_;
+static PyTypeObject *TableRowType_;
+static PyTypeObject *ScrollStateType_;
 static PyTypeObject *InputType_;
 
 /* Interned attribute name strings — only those still read via
  * PyObject_GetAttr remain. Slot-backed fields are accessed by offset. */
 static PyObject *a_value;
-static PyObject *a_spacing;
-static PyObject *a_offset;
-static PyObject *a_follow;
-static PyObject *a_max_offset;
-static PyObject *a_rows;
-static PyObject *a_cells;
-static PyObject *a_height;
-static PyObject *a_total;
 static PyObject *a_render_fn;
 
 /* Interned constant strings. */
@@ -86,6 +80,12 @@ static Py_ssize_t off_zstack_jc, off_zstack_ai;
 static Py_ssize_t off_box_style, off_box_title, off_box_padding;
 /* Scroll */
 static Py_ssize_t off_scroll_state;
+/* Table */
+static Py_ssize_t off_table_rows, off_table_spacing;
+/* TableRow */
+static Py_ssize_t off_trow_cells;
+/* ScrollState */
+static Py_ssize_t off_ss_offset, off_ss_height, off_ss_total, off_ss_follow;
 /* Spacer */
 static Py_ssize_t off_spacer_min_length;
 /* Input */
@@ -159,19 +159,21 @@ static int init_render_types(void) {
     if (!var) return -1;                     \
 } while (0)
 
-    LOAD(NodeType_,      "ttyz.components.base",      "Node");
-    LOAD(TextType_,      "ttyz.components.text",      "Text");
-    LOAD(HStackType_,    "ttyz.components.hstack",    "HStack");
-    LOAD(VStackType_,    "ttyz.components.vstack",    "VStack");
-    LOAD(ZStackType_,    "ttyz.components.zstack",    "ZStack");
-    LOAD(BoxType_,       "ttyz.components.box",        "Box");
-    LOAD(SpacerType_,    "ttyz.components.spacer",    "Spacer");
-    LOAD(CondType_,      "ttyz.components.cond",      "Cond");
-    LOAD(ForeachType_,   "ttyz.components.foreach",   "Foreach");
-    LOAD(ScrollType_,    "ttyz.components.scroll",    "Scroll");
-    LOAD(ScrollbarType_, "ttyz.components.scrollbar",  "Scrollbar");
-    LOAD(TableType_,     "ttyz.components.table",     "Table");
-    LOAD(InputType_,     "ttyz.components.input",     "Input");
+    LOAD(NodeType_,        "ttyz.components.base",      "Node");
+    LOAD(TextType_,        "ttyz.components.text",      "Text");
+    LOAD(HStackType_,      "ttyz.components.hstack",    "HStack");
+    LOAD(VStackType_,      "ttyz.components.vstack",    "VStack");
+    LOAD(ZStackType_,      "ttyz.components.zstack",    "ZStack");
+    LOAD(BoxType_,         "ttyz.components.box",        "Box");
+    LOAD(SpacerType_,      "ttyz.components.spacer",    "Spacer");
+    LOAD(CondType_,        "ttyz.components.cond",      "Cond");
+    LOAD(ForeachType_,     "ttyz.components.foreach",   "Foreach");
+    LOAD(ScrollType_,      "ttyz.components.scroll",    "Scroll");
+    LOAD(ScrollbarType_,   "ttyz.components.scrollbar",  "Scrollbar");
+    LOAD(TableType_,       "ttyz.components.table",     "Table");
+    LOAD(TableRowType_,    "ttyz.components.table",     "TableRow");
+    LOAD(ScrollStateType_, "ttyz.components.scroll",    "ScrollState");
+    LOAD(InputType_,       "ttyz.components.input",     "Input");
 #undef LOAD
 
 #define INTERN(var, name) do {                        \
@@ -180,14 +182,6 @@ static int init_render_types(void) {
 } while (0)
 
     INTERN(a_value,           "value");
-    INTERN(a_spacing,         "spacing");
-    INTERN(a_offset,          "offset");
-    INTERN(a_follow,          "follow");
-    INTERN(a_max_offset,      "max_offset");
-    INTERN(a_rows,            "rows");
-    INTERN(a_cells,           "cells");
-    INTERN(a_height,          "height");
-    INTERN(a_total,           "total");
     INTERN(a_render_fn,       "render_fn");
     INTERN(s_visible,         "visible");
     INTERN(s_start,           "start");
@@ -245,6 +239,16 @@ static int init_render_types(void) {
     OFF(off_box_padding,    BoxType_,     "padding");
     /* Scroll */
     OFF(off_scroll_state,     ScrollType_,  "state");
+    /* Table */
+    OFF(off_table_rows,       TableType_,   "rows");
+    OFF(off_table_spacing,    TableType_,   "spacing");
+    /* TableRow */
+    OFF(off_trow_cells,       TableRowType_, "cells");
+    /* ScrollState */
+    OFF(off_ss_offset,        ScrollStateType_, "offset");
+    OFF(off_ss_height,        ScrollStateType_, "height");
+    OFF(off_ss_total,         ScrollStateType_, "total");
+    OFF(off_ss_follow,        ScrollStateType_, "follow");
     /* Spacer */
     OFF(off_spacer_min_length, SpacerType_, "min_length");
     /* Input */
@@ -382,42 +386,22 @@ static int rc_resolve_size(PyObject *value, int parent) {
     return val;
 }
 
-/* Quick int attr read.  Returns dflt if attribute is missing. */
-static int rc_int_attr(PyObject *obj, PyObject *name, int dflt) {
-    PyObject *v = PyObject_GetAttr(obj, name);
-    if (!v) {
-        if (PyErr_ExceptionMatches(PyExc_AttributeError)) PyErr_Clear();
-        return dflt;
-    }
-    int r = (int)PyLong_AsLong(v);
-    Py_DECREF(v);
-    return r;
-}
-
-/* Quick bool attr read. */
-static int rc_bool_attr(PyObject *obj, PyObject *name, int dflt) {
-    PyObject *v = PyObject_GetAttr(obj, name);
-    if (!v) {
-        if (PyErr_ExceptionMatches(PyExc_AttributeError)) PyErr_Clear();
-        return dflt;
-    }
-    int r = PyObject_IsTrue(v);
-    Py_DECREF(v);
-    return r;
-}
-
-/* Set an integer attribute on a Python object. */
-static void rc_set_int(PyObject *obj, PyObject *name, int val) {
+/* Write an int into a slot (replacing the previous PyObject). */
+static void ss_set_int(PyObject *obj, Py_ssize_t offset, int val) {
     PyObject *v = PyLong_FromLong(val);
-    if (v) {
-        if (PyObject_SetAttr(obj, name, v) < 0) PyErr_Clear();
-        Py_DECREF(v);
-    }
+    if (!v) { PyErr_Clear(); return; }
+    PyObject **slot = (PyObject **)((char *)obj + offset);
+    Py_XDECREF(*slot);
+    *slot = v;
 }
 
-static void rc_set_bool(PyObject *obj, PyObject *name, int val) {
+/* Write a bool into a slot. */
+static void ss_set_bool(PyObject *obj, Py_ssize_t offset, int val) {
     PyObject *v = val ? Py_True : Py_False;
-    if (PyObject_SetAttr(obj, name, v) < 0) PyErr_Clear();
+    Py_INCREF(v);
+    PyObject **slot = (PyObject **)((char *)obj + offset);
+    Py_XDECREF(*slot);
+    *slot = v;
 }
 
 /* Distribute remaining space among flex items proportionally. */
@@ -558,22 +542,20 @@ static int table_measure_cols(RenderCtx *ctx, PyObject *rows, Py_ssize_t nr,
                               int *col_w, int *grow_w) {
     int num_cols = 0;
     for (Py_ssize_t r = 0; r < nr; r++) {
-        PyObject *cells = PyObject_GetAttr(
-            PyList_GET_ITEM(rows, r), a_cells);
+        PyObject *cells = SLOT(PyList_GET_ITEM(rows, r), off_trow_cells);
         if (!cells) continue;
         int nc = (int)PyList_GET_SIZE(cells);
         if (nc > num_cols) num_cols = nc;
         for (Py_ssize_t ci = 0; ci < nc && ci < 256; ci++) {
             PyObject *cell = PyList_GET_ITEM(cells, ci);
             int m = c_measure_node(ctx, cell);
-            if (m < 0) { Py_DECREF(cells); return -1; }
+            if (m < 0) return -1;
             if (m > col_w[ci]) col_w[ci] = m;
             if (grow_w) {
                 int g = slot_int(cell, off_grow);
                 if (g > grow_w[ci]) grow_w[ci] = g;
             }
         }
-        Py_DECREF(cells);
     }
     return num_cols;
 }
@@ -650,20 +632,18 @@ static int c_measure_node(RenderCtx *ctx, PyObject *node) {
         }
     }
     else if (tp == TableType_) {
-        PyObject *rows = PyObject_GetAttr(node, a_rows);
-        if (!rows) return -1;
+        PyObject *rows = SLOT(node, off_table_rows);
         if (PyList_Check(rows) && PyList_GET_SIZE(rows) > 0) {
-            int spacing = rc_int_attr(node, a_spacing, 0);
+            int spacing = slot_int(node, off_table_spacing);
             Py_ssize_t nr = PyList_GET_SIZE(rows);
             int cw[256] = {0};
             int num_cols = table_measure_cols(ctx, rows, nr, cw, NULL);
-            if (num_cols < 0) { Py_DECREF(rows); return -1; }
+            if (num_cols < 0) return -1;
             for (int ci = 0; ci < num_cols && ci < 256; ci++)
                 result += cw[ci];
             if (num_cols > 1)
                 result += spacing * (num_cols - 1);
         }
-        Py_DECREF(rows);
     }
     else if (tp == InputType_) {
         PyObject *buf = SLOT(node, off_input_buffer);
@@ -1147,19 +1127,12 @@ static int render_hstack(RenderCtx *ctx, PyObject *node,
     } else if (jc == s_center) {
         cx = remaining / 2;
     }
-    /* "between" distributes remaining among gaps. */
-    int gap_extras[512];
+    /* "between" distributes remaining among n-1 gaps with equal weights. */
+    int gap_extras[512] = {0};
     if (jc == s_between && n > 1 && remaining > 0) {
-        long tw = (long)(n - 1);
-        long cw = 0, cs = 0;
-        for (int i = 0; i < n - 1; i++) {
-            cw += 1;
-            long tgt = remaining * cw / tw;
-            gap_extras[i] = (int)(tgt - cs);
-            cs = tgt;
-        }
-    } else {
-        for (int i = 0; i < n; i++) gap_extras[i] = 0;
+        int idx[512], wt[512];
+        for (int i = 0; i < n - 1; i++) { idx[i] = i; wt[i] = 1; }
+        distribute_flex(remaining, idx, wt, n - 1, gap_extras);
     }
 
     for (int i = 0; i < n; i++) {
@@ -1291,13 +1264,7 @@ static int render_box(RenderCtx *ctx, PyObject *node,
         if (title_len > 0) {
             /* " title hz..." */
             rc_set_cell(buf, x + 1, y, ' ', bg);
-            /* Truncate title to fit. */
-            PyObject *t_args = Py_BuildValue("(Oi)", title_obj, inner - 2);
-            PyObject *t_kw = Py_BuildValue("{s:O}", "ellipsis", Py_True);
-            PyObject *trunc = (t_args && t_kw)
-                              ? mod_truncate(NULL, t_args, t_kw) : NULL;
-            Py_XDECREF(t_args);
-            Py_XDECREF(t_kw);
+            PyObject *trunc = truncate_line(title_obj, inner - 2, 't');
             if (!trunc && PyErr_Occurred()) PyErr_Clear();
             if (trunc) {
                 int tw = str_display_width(trunc);
@@ -1353,18 +1320,18 @@ static int render_scroll(RenderCtx *ctx, PyObject *node,
     Py_ssize_t total = children_len(children);
     if (total < 0) return -1;
 
-    rc_set_int(state, a_height, h);
-    rc_set_int(state, a_total, (int)total);
+    ss_set_int(state, off_ss_height, h);
+    ss_set_int(state, off_ss_total, (int)total);
 
-    int follow = rc_bool_attr(state, a_follow, 0);
-    int max_off = rc_int_attr(state, a_max_offset, 0);
-    int offset = follow ? max_off : rc_int_attr(state, a_offset, 0);
+    int max_off = (int)total > h ? (int)total - h : 0;
+    int follow = slot_bool(state, off_ss_follow);
+    int offset = follow ? max_off : slot_int(state, off_ss_offset);
     if (offset < 0) offset = 0;
     if (offset > max_off) offset = max_off;
-    rc_set_int(state, a_offset, offset);
+    ss_set_int(state, off_ss_offset, offset);
 
     if ((int)total > h && offset >= max_off)
-        rc_set_bool(state, a_follow, 1);
+        ss_set_bool(state, off_ss_follow, 1);
 
     int rows = 0;
     for (Py_ssize_t i = (Py_ssize_t)offset; i < total && rows < h; i++) {
@@ -1385,25 +1352,21 @@ static int render_scroll(RenderCtx *ctx, PyObject *node,
 
 static int render_table(RenderCtx *ctx, PyObject *node,
                         int x, int y, int w, int h, Style bg) {
-    PyObject *rows = PyObject_GetAttr(node, a_rows);
-    if (!rows) return -1;
-    if (!PyList_Check(rows) || PyList_GET_SIZE(rows) == 0) {
-        Py_DECREF(rows);
+    PyObject *rows = SLOT(node, off_table_rows);
+    if (!PyList_Check(rows) || PyList_GET_SIZE(rows) == 0)
         return 1;  /* empty table: one blank row */
-    }
 
-    int spacing = rc_int_attr(node, a_spacing, 0);
+    int spacing = slot_int(node, off_table_spacing);
     Py_ssize_t nr = PyList_GET_SIZE(rows);
 
     int col_w[256] = {0};
     int grow_w[256] = {0};
     int num_cols = table_measure_cols(ctx, rows, nr, col_w, grow_w);
-    if (num_cols < 0) { Py_DECREF(rows); return -1; }
-    if (num_cols == 0) { Py_DECREF(rows); return 0; }
+    if (num_cols < 0) return -1;
+    if (num_cols == 0) return 0;
     if (num_cols > 256) {
         PyErr_SetString(PyExc_OverflowError,
                         "Table: too many columns (max 256)");
-        Py_DECREF(rows);
         return -1;
     }
 
@@ -1443,8 +1406,7 @@ static int render_table(RenderCtx *ctx, PyObject *node,
     for (Py_ssize_t r = 0; r < visible; r++) {
         /* Fill row with spaces so missing columns are visible. */
         rc_fill_region(ctx->buf, x, y + (int)r, table_w, 1, bg);
-        PyObject *cells = PyObject_GetAttr(
-            PyList_GET_ITEM(rows, r), a_cells);
+        PyObject *cells = SLOT(PyList_GET_ITEM(rows, r), off_trow_cells);
         if (!cells) continue;
         Py_ssize_t nc = PyList_GET_SIZE(cells);
         for (Py_ssize_t ci = 0; ci < nc && ci < num_cols; ci++) {
@@ -1452,10 +1414,8 @@ static int render_table(RenderCtx *ctx, PyObject *node,
                           x + col_x[ci], y + (int)r,
                           resolved[ci], 1, bg);
         }
-        Py_DECREF(cells);
     }
 
-    Py_DECREF(rows);
     return (int)visible;
 }
 
@@ -1644,9 +1604,9 @@ static int render_scrollbar(RenderCtx *ctx, PyObject *node,
                             int x, int y, int w, int h, Style bg) {
     PyObject *state = SLOT(node, off_scrollbar_state); /* borrowed */
 
-    int sh = rc_int_attr(state, a_height, 0);
-    int total = rc_int_attr(state, a_total, 0);
-    int offset = rc_int_attr(state, a_offset, 0);
+    int sh = slot_int(state, off_ss_height);
+    int total = slot_int(state, off_ss_total);
+    int offset = slot_int(state, off_ss_offset);
 
     if (sh <= 0 || total <= sh)
         return sh > 0 ? sh : 0;

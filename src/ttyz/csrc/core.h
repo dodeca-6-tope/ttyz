@@ -190,41 +190,6 @@ static inline int cwidth(Py_UCS4 ch) {
 
 /* ── Escape sequence skippers ─────────────────────────────────────── */
 
-/* Skip any escape sequence in a raw char buffer starting at src[pos]
-   (which must be ESC).  Handles CSI, OSC (BEL / ST), and other ESC+byte.
-   Returns the position AFTER the sequence. */
-static inline Py_ssize_t skip_escape_ascii(const char *src, Py_ssize_t pos,
-                                            Py_ssize_t len) {
-    if (pos + 1 >= len) return pos + 1;
-    char next = src[pos + 1];
-
-    if (next == '[') {
-        /* CSI: ESC [ ... final_byte (0x40-0x7E) */
-        Py_ssize_t end = pos + 2;
-        while (end < len && !((unsigned char)src[end] >= 0x40 &&
-                              (unsigned char)src[end] <= 0x7E))
-            end++;
-        if (end < len) end++; /* skip final byte */
-        return end;
-    }
-
-    if (next == ']') {
-        /* OSC: ESC ] ... terminated by BEL or ST (ESC \) */
-        Py_ssize_t end = pos + 2;
-        while (end < len) {
-            if (src[end] == 0x07) return end + 1;              /* BEL */
-            if (src[end] == '\033' && end + 1 < len &&
-                src[end + 1] == '\\')
-                return end + 2;                                 /* ST */
-            end++;
-        }
-        return end;
-    }
-
-    /* Other ESC sequence (e.g. ESC ( B): skip ESC + next byte */
-    return pos + 2;
-}
-
 /* Skip any escape sequence starting at pos (Unicode).  Always advances
    past the sequence. */
 static inline Py_ssize_t skip_escape(const void *data, int kind,

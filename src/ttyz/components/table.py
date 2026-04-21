@@ -8,6 +8,9 @@ from ttyz.components.base import Node, Overflow
 class TableRow:
     """A row of components for use inside a Table."""
 
+    __slots__ = ("cells",)
+    cells: list[Node]
+
     def __init__(self, *cells: Node) -> None:
         self.cells = list(cells)
 

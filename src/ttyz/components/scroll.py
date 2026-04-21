@@ -10,6 +10,12 @@ from ttyz.components.base import Node, Overflow, resolve_children
 class ScrollState:
     """Tracks scroll offset. Scroll writes resolved height/total during render."""
 
+    __slots__ = ("offset", "height", "total", "follow")
+    offset: int
+    height: int
+    total: int
+    follow: bool
+
     def __init__(self, follow: bool = False) -> None:
         self.offset = 0
         self.height = 0

@@ -41,14 +41,12 @@ class ListState(Generic[T]):
     def set_items(self, items: Sequence[T]) -> None:
         prev = self.current.key if self.current else None
         self.items = items
-        if prev is not None:
-            idx = next(
-                (i for i, x in enumerate(self.items) if x.key == prev),
-                self.cursor,
-            )
-            self.move_to(idx)
-        else:
-            self.move_to(self.cursor)
+        idx = (
+            next((i for i, x in enumerate(items) if x.key == prev), self.cursor)
+            if prev is not None
+            else self.cursor
+        )
+        self.move_to(idx)
 
     @property
     def offset(self) -> int:
