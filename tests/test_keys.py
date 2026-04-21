@@ -290,16 +290,15 @@ def test_ctrl_keys():
     assert _read_one(b"\x11") == "ctrl-q"
 
 
-def test_ctrl_c_raises():
-    import pytest
+def test_ctrl_c_legacy():
+    assert _read_one(b"\x03") == "ctrl-c"
 
-    r, w = os.pipe()
-    os.write(w, b"\x03")
-    os.close(w)
-    kr = KeyReader(r)
-    with pytest.raises(KeyboardInterrupt):
-        kr.read(0)
-    os.close(r)
+
+def test_kitty_ctrl_c():
+    result = _read_one(b"\x1b[99;5u")
+    assert isinstance(result, Key)
+    assert result.name == "c"
+    assert result.ctrl
 
 
 # ── Mouse fields ─────────────────────────────────────────────────────

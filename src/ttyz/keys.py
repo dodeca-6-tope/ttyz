@@ -86,6 +86,7 @@ BYTE_KEYS: dict[bytes, str] = {
     b"\n": "enter",
     b"\x01": "home",
     b"\x02": "ctrl-b",
+    b"\x03": "ctrl-c",
     b"\x04": "ctrl-d",
     b"\x05": "end",
     b"\x06": "ctrl-f",
@@ -346,8 +347,6 @@ class KeyReader:
         ch = self._consume()
         if ch == b"\x1b":
             return self._read_escape()
-        if ch == b"\x03":
-            raise KeyboardInterrupt
         name = BYTE_KEYS.get(ch)
         if name:
             return Key(name)
